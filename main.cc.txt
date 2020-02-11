@@ -1,0 +1,250 @@
+/*
+ * main.cc
+ *
+ *  Created on: 5 feb 2020
+ *      Author: openflow
+ *
+ *      Client1 === +------------+   +------------+ === Server1
+ *      		    |SwitchClient|===|SwitchServer|
+ *      ClientN === +------------+   +------------+ === ServerN
+ **/
+
+#include <ns3/core-module.h>
+#include <ns3/network-module.h>
+#include <ns3/csma-module.h>
+#include <ns3/internet-module.h>
+#include <ns3/ofswitch13-module.h>
+#include <ns3/internet-apps-module.h>
+
+#include <ns3/netanim-module.h>
+#include <ns3/mobility-module.h>
+#include <ns3/applications-module.h>
+#include "ns3/on-off-helper.h"
+#include "ns3/packet-sink-helper.h"
+#include "qos-controller.h"
+
+
+using namespace ns3;
+
+int
+main (int argc, char *argv[])
+{
+	/*Numero Client*/
+	uint16_t nClient = 2;
+	/*Numero Server*/
+	uint16_t nServer = 2;
+	uint16_t simTime = 10;
+	bool verbose = false;
+	bool trace = true;
+
+	std::string prot                 = "udp";
+	std::string dataNoise            = "1Mbps"; //quanto traffico deve passare
+
+	// Configure command line parameters
+	CommandLine cmd;
+	cmd.AddValue ("simTime", "Simulation time (seconds)", simTime);
+	cmd.AddValue ("verbose", "Enable verbose output", verbose);
+	cmd.AddValue ("trace", "Enable datapath stats and pcap traces", trace);
+	cmd.Parse (argc, argv);
+
+	if (verbose)
+	{
+		OFSwitch13Helper::EnableDatapathLogs ();
+		LogComponentEnable ("OFSwitch13Interface", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13Device", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13Port", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13Queue", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13SocketHandler", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13Controller", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13LearningController", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13Helper", LOG_LEVEL_ALL);
+		LogComponentEnable ("OFSwitch13InternalHelper", LOG_LEVEL_ALL);
+	}
+
+	// Enable checksum computations (required by OFSwitch13 module)
+	GlobalValue::Bind ("ChecksumEnabled", BooleanValue (true));
+
+	// Create hosts nodes
+	NodeContainer hosts;
+	hosts.Create (nClient);
+	//Create server nodes
+	NodeContainer servers;
+	servers.Create(nServer);
+	//Create controller nodes
+	NodeContainer controller;
+	controller.Create(1); //un unico controller centralizzato
+
+	// Create the SwitchClient node
+	Ptr<Node> switchClient = CreateObject<Node> ();
+	// Create the SwitchServer node
+	Ptr<Node> switchServer = CreateObject<Node> ();
+
+	NodeContainer switchContainer= CreateObject<Node>();
+	switchContainer.Add(switchClient);
+	switchContainer.Add(switchServer);
+
+
+
+	/*---------------Connessione tra SwitchClient e SwitchServer--------------------*/
+
+	// Use the CsmaHelper to connect SwitchClient and SwitchServer with 100Mbps band
+	CsmaHelper csmaHelper;
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	NetDeviceContainer switchClientPorts, switchServerPorts;
+
+	NodeContainer pair(switchClient,switchServer);
+	NetDeviceContainer link = csmaHelper.Install(pair);
+	switchClientPorts.Add(link.Get(0));
+	switchServerPorts.Add(link.Get(1));
+
+	/*---------------Connessione tra tutti gli Host e lo SwitchClient--------------------*/
+
+	// Use the CsmaHelper to connect Host and SwitchClient with 100Mbps band
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	NetDeviceContainer hostDevicePorts; //è presente come secondo lo switchCLientPorts
+	for (size_t i = 0; i < nClient; i++)
+	{
+		//NodeContainer pair1(hosts,switchClient);
+		link = csmaHelper.Install (NodeContainer (hosts.Get (i), switchClient));
+		hostDevicePorts.Add (link.Get (0));
+		switchClientPorts.Add (link.Get (1));
+	}
+
+	/*---------------Connessione tra SwitchServer e Server--------------------*/
+
+	// Use the CsmaHelper to connect Host and SwitchClient with 100Mbps band
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	NetDeviceContainer serverDevicePorts;//è presente come primo il serverSwitchPorts
+
+	for (size_t i = 0; i < nServer; i++)
+	{
+		//NodeContainer pair2(switchServer, server);
+		link = csmaHelper.Install (NodeContainer (switchServer, servers.Get (i)));
+		switchServerPorts.Add(link.Get(0));
+		serverDevicePorts.Add(link.Get(1));;
+	}
+
+
+	/*Creazione del controller*/
+
+	/*Creazione della rete e collecamento degli switch*/
+	//Creazione del nostro qosController
+	Ptr<QosController> qosCtrl = CreateObject<QosController> ();
+	// Configure the OpenFlow network domain
+	Ptr<OFSwitch13InternalHelper> ofQosHelper = CreateObject<OFSwitch13InternalHelper> ();
+	//Imposto che il nostro controller è un QoSController
+	ofQosHelper->InstallController (controller.Get(0),qosCtrl);
+	//NON installo gli switch su ofQosHelper perché devono essere collegati al QosController per usare OpenFlow
+	//ofQosHelper->InstallSwitch (switchClient, switchClientPorts);
+	//ofQosHelper->InstallSwitch (switchServer, switchServerPorts);
+
+	//Installiamo come device OpenFLow, i due switch che abbiamo creat
+	OFSwitch13DeviceContainer ofSwitchDevices;
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchClient, switchClientPorts));  //border switch
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchServer, switchServerPorts));  //aggregation switch
+	ofQosHelper->CreateOpenFlowChannels ();
+
+	// Install the TCP/IP stack into host and server nodes
+	InternetStackHelper internet;
+	internet.Install (hosts);
+	internet.Install (servers);
+
+	Ipv4AddressHelper ipv4helpr;
+
+	// Set IPv4 hostPort addresses
+	Ipv4InterfaceContainer hostIpIfaces;
+	ipv4helpr.SetBase ("10.1.0.0", "255.255.0.0","0.0.2.1");
+	hostIpIfaces = ipv4helpr.Assign (hostDevicePorts);
+
+	// Set IPv4 serverPort addresses
+	Ipv4InterfaceContainer serverIpIfaces;
+	ipv4helpr.SetBase ("10.1.0.0", "255.255.0.0","0.0.3.1");
+	serverIpIfaces = ipv4helpr.Assign (serverDevicePorts);
+
+
+
+
+	/*
+  // Configure ping application between hosts
+  V4PingHelper pingHelper = V4PingHelper (hostIpIfaces.GetAddress (1));
+  pingHelper.SetAttribute ("Verbose", BooleanValue (true));
+  ApplicationContainer pingApps = pingHelper.Install (hosts.Get (0));
+  pingApps.Start (Seconds (1));
+	 */
+
+	Ipv4Address host0Address ("10.1.2.1");
+	Ipv4Address host1Address ("10.1.2.2");
+	Ipv4Address serverAddress ("10.1.3.1");
+
+	std::string prot_code = "ns3::UdpSocketFactory";
+	int packetSize = 512;
+	if (prot=="tcp"){
+		prot_code = "ns3::TcpSocketFactory";
+	}
+
+	//************ traffic generation ***********
+	/*************Install SendApp and SinkApps****************/
+	//Regola di invio 11 (Genera traffico verso il controller)
+	InetSocketAddress noiseDest11 (("10.1.1.1"), 5111);
+	OnOffHelper onoff11 (prot_code, Address (noiseDest11));
+	onoff11.SetConstantRate (DataRate (dataNoise));
+	onoff11.SetAttribute("PacketSize", UintegerValue (packetSize));
+	onoff11.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=1]"));
+	onoff11.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0]"));
+
+	//Regola di invio 12 (Genera traffico verso host_0)
+	InetSocketAddress noiseDest12 (serverAddress, 5111);
+	OnOffHelper onoff12 (prot_code, Address (noiseDest12));
+	onoff12.SetConstantRate (DataRate (dataNoise));
+	onoff12.SetAttribute("PacketSize", UintegerValue (packetSize));
+	onoff12.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=1]"));
+	onoff12.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0]"));
+
+	ApplicationContainer SendApps; //Qui vanno aggiungiunte le installazioni per ogni host che invia dati
+	//SendApps.Add(onoff11.Install (hosts.Get (0))); //host_0 invia con regola di onoff11
+	SendApps.Add(onoff12.Install (hosts.Get (1))); //host_1 invia con regola di onoff12
+	SendApps.Start (Seconds (1.0));
+	SendApps.Stop (Seconds (simTime+1));
+
+	ApplicationContainer SkinApps; //Qui vanno aggiunte le installazioni per ogni server che riceve
+	PacketSinkHelper sink11 (prot_code, InetSocketAddress (Ipv4Address::GetAny (), 5111));
+	SkinApps.Add(sink11.Install (hosts.Get (0)));  //host_0 riceve in base alla regola sink11
+	SkinApps.Start (Seconds (1.0));
+	SkinApps.Stop (Seconds (simTime+1));
+
+
+	// Enable datapath stats and pcap traces at hosts, switch(es), and controller(s)
+	if (trace)
+	{
+		ofQosHelper->EnableOpenFlowPcap ("openflow");
+		ofQosHelper->EnableDatapathStats ("switch-stats");
+		csmaHelper.EnablePcap ("switch", switchContainer, true);
+		csmaHelper.EnablePcap ("hosts", hosts, true);
+		csmaHelper.EnablePcap ("servers", servers, true);
+	}
+
+	// Run the simulation
+	Simulator::Stop (Seconds (simTime));
+	Simulator::Run ();
+	Simulator::Destroy ();
+
+	// Dump total of received bytes by sink applications
+	Ptr<PacketSink> sink1 = DynamicCast<PacketSink> (SkinApps.Get (0));
+	std::cout << "DataNoise="<<dataNoise <<" Bytes received by server 1: " << sink1->GetTotalRx () << " ("
+			<< (8. * sink1->GetTotalRx ()) / 1000000.0 / (simTime) << " Mbps)"
+			<< std::endl;
+
+
+
+
+}
+
+
+
+

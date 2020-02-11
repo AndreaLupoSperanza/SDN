@@ -1,0 +1,840 @@
+/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
+/*
+ * Copyright (c) 2016 University of Campinas (Unicamp)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Author:  Luciano Chaves <luciano@lrc.ic.unicamp.br>
+ */
+
+#include <ns3/network-module.h>
+#include <ns3/internet-module.h>
+//#include <ns3/ofswitch13-controller.h>
+#include "qos-controller.h"
+
+NS_LOG_COMPONENT_DEFINE ("QosController");
+NS_OBJECT_ENSURE_REGISTERED (QosController);
+
+QosController::QosController ()
+{
+	NS_LOG_FUNCTION (this);
+
+}
+
+QosController::~QosController ()
+{
+	NS_LOG_FUNCTION (this);
+}
+
+void
+QosController::DoDispose ()
+{
+	NS_LOG_FUNCTION (this);
+
+	m_arpTable.clear ();
+	OFSwitch13Controller::DoDispose ();
+}
+
+TypeId
+QosController::GetTypeId (void)
+{
+	static TypeId tid = TypeId ("ns3::QosController")
+	    .SetParent<OFSwitch13Controller> ()
+	    .SetGroupName ("OFSwitch13")
+	    .AddConstructor<QosController> ()
+	    .AddAttribute ("EnableMeter",
+	                   "Enable per-flow mettering.",
+	                   BooleanValue (false),
+	                   MakeBooleanAccessor (&QosController::m_meterEnable),
+	                   MakeBooleanChecker ())
+	    .AddAttribute ("MeterRate",
+	                   "Per-flow meter rate.",
+	                   DataRateValue (DataRate ("256Kbps")),
+	                   MakeDataRateAccessor (&QosController::m_meterRate),
+	                   MakeDataRateChecker ())
+	    .AddAttribute ("LinkAggregation",
+	                   "Enable link aggregation.",
+	                   BooleanValue (true),
+	                   MakeBooleanAccessor (&QosController::m_linkAggregation),
+	                   MakeBooleanChecker ())
+	    .AddAttribute ("ServerIpAddr",
+	                   "Server IPv4 address.",
+	                   AddressValue (Address (Ipv4Address ("10.1.1.1"))),
+	                   MakeAddressAccessor (&QosController::m_serverIpAddress),
+	                   MakeAddressChecker ())
+	    .AddAttribute ("ServerTcpPort",
+	                   "Server TCP port.",
+	                   UintegerValue (9),
+	                   MakeUintegerAccessor (&QosController::m_serverTcpPort),
+	                   MakeUintegerChecker<uint64_t> ())
+	    .AddAttribute ("ServerMacAddr",
+	                   "Server MAC address.",
+	                   AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
+	                   MakeAddressAccessor (&QosController::m_serverMacAddress),
+	                   MakeAddressChecker ())
+	  ;																																			;																																		;
+	return tid;
+}
+
+void
+QosController::SetWeight(std::string weight){
+	InputWeight = weight;
+}
+
+ofl_err
+QosController::HandlePacketIn (
+		struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+		uint32_t xid)
+{
+	NS_LOG_FUNCTION (this << swtch << xid);
+
+	char *msgStr =
+			ofl_structs_match_to_string ((struct ofl_match_header*)msg->match, 0);
+	NS_LOG_DEBUG ("Packet in match: " << msgStr);
+	free (msgStr);
+
+	if (msg->reason == OFPR_ACTION)
+	{
+		// Get Ethernet frame type
+		uint16_t ethType;
+		struct ofl_match_tlv *tlv;
+		tlv = oxm_match_lookup (OXM_OF_ETH_TYPE, (struct ofl_match*)msg->match);
+		memcpy (&ethType, tlv->value, OXM_LENGTH (OXM_OF_ETH_TYPE));
+
+		if (ethType == ArpL3Protocol::PROT_NUMBER)
+		{
+			std::cout << "GIUSTO" << std::endl;
+			// ARP packet
+			return HandleArpPacketIn (msg, swtch, xid);
+		}
+		else if (ethType == Ipv4L3Protocol::PROT_NUMBER)
+		{
+			std::cout << "OPSSSSS" << std::endl;
+			// Must be a TCP packet for connection request
+			return HandleConnectionRequest (msg, swtch, xid);
+		}
+	}
+
+	// All handlers must free the message when everything is ok
+	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	return 0;
+}
+
+void
+QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
+{
+	NS_LOG_FUNCTION (this << swtch);
+
+	// This function is called after a successfully handshake between controller
+	// and each switch. Let's check the switch for proper configuration.
+	if (swtch->GetDpId () == 1)
+	{
+		ConfigureBorderSwitch_FUB (swtch);
+	}
+	else if (swtch->GetDpId () == 2)
+	{
+		//      ConfigureAggregationSwitch (swtch);
+		ConfigureAggregationSwitch_FUB (swtch);
+	}
+}
+
+void
+QosController::ConfigureBorderSwitch (Ptr<const RemoteSwitch> swtch)
+{
+	NS_LOG_FUNCTION (this << swtch);
+
+	// For packet-in messages, send only the first 128 bytes to the controller
+	DpctlExecute (swtch, "set-config miss=128");
+
+	// Redirect ARP requests to the controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0806,arp_op=1 apply:output=ctrl");
+
+	// Using group #3 for rewriting headers and forwarding packets to clients
+	if (m_linkAggregation)
+	{
+		// Configure Group #3 for aggregating links 1 and 2
+		DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=3 "
+				"weight=1,port=any,group=any set_field=ip_src:10.1.1.1"
+				",set_field=eth_src:00:00:00:00:00:01,output=1 "
+				"weight=1,port=any,group=any set_field=ip_src:10.1.1.1"
+				",set_field=eth_src:00:00:00:00:00:01,output=2");
+	}
+	else
+	{
+		// Configure Group #3 for sending packets only over link 1
+		DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=3 "
+				"weight=0,port=any,group=any set_field=ip_src:10.1.1.1"
+				",set_field=eth_src:00:00:00:00:00:01,output=1");
+	}
+
+	// Groups #1 and #2 send traffic to internal servers (ports 3 and 4)
+	DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
+			"weight=0,port=any,group=any set_field=ip_dst:10.1.1.2,"
+			"set_field=eth_dst:00:00:00:00:00:08,output=3");
+	DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
+			"weight=0,port=any,group=any set_field=ip_dst:10.1.1.3,"
+			"set_field=eth_dst:00:00:00:00:00:0a,output=4");
+
+	// Incoming TCP connections (ports 1 and 2) are sent to the controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+			"in_port=1,eth_type=0x0800,ip_proto=6,ip_dst=10.1.1.1,"
+			"eth_dst=00:00:00:00:00:01 apply:output=ctrl");
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+			"in_port=2,eth_type=0x0800,ip_proto=6,ip_dst=10.1.1.1,"
+			"eth_dst=00:00:00:00:00:01 apply:output=ctrl");
+
+	// TCP packets from servers are sent to the external network through group 3
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
+			"in_port=3,eth_type=0x0800,ip_proto=6 apply:group=3");
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
+			"in_port=4,eth_type=0x0800,ip_proto=6 apply:group=3");
+}
+
+void
+QosController::ConfigureAggregationSwitch (Ptr<const RemoteSwitch> swtch)
+{
+	NS_LOG_FUNCTION (this << swtch);
+
+	if (m_linkAggregation)
+	{
+		// Configure Group #1 for aggregating links 1 and 2
+		DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
+				"weight=1,port=any,group=any output=1 "
+				"weight=1,port=any,group=any output=2");
+	}
+	else
+	{
+		// Configure Group #1 for sending packets only over link 1
+		DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
+				"weight=0,port=any,group=any output=1");
+	}
+
+	// Packets from input ports 1 and 2 are redirecte to port 3
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+			"in_port=1 write:output=3");
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+			"in_port=2 write:output=3");
+
+	// Packets from input port 3 are redirected to group 1
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+			"in_port=3 write:group=1");
+}
+
+void
+QosController::ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch)
+{
+	std::cout << "configureBorderSwitch_FUB" << std::endl;
+	NS_LOG_FUNCTION (this << swtch);
+
+	// For packet-in messages, send only the first 128 bytes to the controller
+	DpctlExecute (swtch, "set-config miss=128");
+	/*----------------------------------------------------------------------*/
+	//CONCENTRATI QUI
+
+	std::cout << "Provo ad impostare la regola" << std::endl;
+
+	// Redirect ARP requests to the controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 " //imposta una regola di flsso, e aggiungila in tabella 0 con priorità 20
+			"eth_type=0x0806,arp_op=1 apply:output=ctrl"); //tipo di frame ethernet, arp_operatione = Arp Request applica:manda al controller
+
+	//Redirect ARP Reply from any Host to Controller IF the destination is the controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=100 "
+				"eth_type=0x0806,arp_op=2 apply:output=1");
+	/*
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1 apply:output=ctrl");//,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1,
+
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01 apply:output=ctrl");
+			*/
+	/*
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+				"eth_type=0x0806,in_port=ctrl,arp_op=1 apply:output=1,output=2,output=3,output=4");
+	 */
+	/*
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 " //imposta una regola di flusso, e aggiungila alla tabella 1 con priorità 20
+			"eth_type=0x0806,arp_op=2,arp_tpa=10.1.1.1,arp_tha=00:00:00:00:00:01, apply:output=ctrl"); //tipo di frame ethernet, arp_operazione = Arp_Reply
+	//match=oxm{arp_op="0x1", arp_spa="192.168.0.1", arp_tha="00:00:00:00:00:02", arp_sha="00:00:00:00:00:01", arp_tpa="192.168.0.2", eth_type="0x806"}, insts=[apply{acts=[out{port="3"}]}]}
+	 */
+	std::cout << "Regola Impostata" << std::endl;
+
+	/*----------------------------------------------------------------------*/
+	//DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+	//              "eth_type=0x0806,arp_op=1 apply:output=3,output=4");
+
+
+	/*
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+                "eth_type=0x0806,arp_op=1 write:group=5");
+  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=5 "
+                "weight=1,port=any,group=any output=3 "
+                "weight=1,port=any,group=any output=4");
+	 */
+	/*
+  //Configure Group #3 for aggregating links 1 and 2
+  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=3 "
+                "weight=1,port=any,group=any output=1 "
+                "weight=1,port=any,group=any output=2");
+  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=4 "
+                "weight=0,port=any,group=any output=2");
+
+  // Groups #1 and #2 send traffic to internal servers (ports 3 and 4)
+  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
+                "weight=0,port=any,group=any output=3");
+  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
+                "weight=0,port=any,group=any output=4");
+
+
+  // Packets from input port 1 and 10.1.1.1 are redirected to group 1
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+		  	  "in_port=1,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1 write:group=1");
+  //                "in_port=1,ip_src=10.1.2.1 write:group=1");
+
+  // Packets from input port 2 and 10.1.1.1 are redirected to group 1
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=2,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1 write:group=1");
+//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+//                "in_port=2,eth_type=0x0800,ip_proto=6,ip_src=10.1.2.1 write:group=1");
+
+  // Packets from input port 2 and 10.1.1.2 are redirected to group 2
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=2,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.2 write:group=2");
+//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+//                "in_port=2,eth_type=0x0800,ip_proto=6,ip_src=10.1.2.2 write:group=2");
+
+  //da rivedere**********************************************************
+
+  // TCP packets from servers are sent to the external network through group 3
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
+                "in_port=3 apply:group=3");
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
+                "in_port=4 apply:group=4");
+	 */
+}
+
+
+void
+QosController::ConfigureAggregationSwitch_FUB (Ptr<const RemoteSwitch> swtch)
+{
+	NS_LOG_FUNCTION (this << swtch);
+	std::cout << "configureAggregationSwitch_FUB" << std::endl;
+	/*
+  if (m_linkAggregation)
+    {
+      // Configure Group #1 for aggregating links 1 and 2
+//      DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
+//                    "weight=" <<InputWeight <<",port=any,group=any output=1 "
+//                    "weight=1,port=any,group=any output=2");
+      DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
+                    "weight=1,port=any,group=any output=1 "
+                    "weight=1,port=any,group=any output=2");
+      DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
+                    "weight=0,port=any,group=any output=2");
+    }
+  else
+    {
+      // Configure Group #1 for sending packets only over link 1
+      DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
+                    "weight=0,port=any,group=any output=1");
+    }
+
+  // Packets from input ports 1 and 2, and direct to 10.1.2.1 are redirecte to port 3
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=1,ip_dst=10.1.2.1 write:output=3");
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=2,ip_dst=10.1.2.1 write:output=3");
+
+  // Packets from input ports 2 are redirecte to port 4
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=2 write:output=4");
+
+  // Packets from input port 3 are redirected to group 1
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=3 write:group=1");
+
+  // Packets from input port 4 are redirected to group 2
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
+                "in_port=4 write:group=2");
+
+  // Redirect ARP requests to the controller
+//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+//                "eth_type=0x0806,arp_op=1 apply:output=ctrl");
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+                "eth_type=0x0806,arp_op=2 apply:output=3,output=4");
+
+
+  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+                "eth_type=0x0806,arp_op=2 apply:group=5");
+  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=5 "
+                "weight=0,port=any,group=any output=3 "
+                "weight=0,port=any,group=any output=4");
+	 */
+}
+
+
+ofl_err
+QosController::HandleArpPacketIn (
+		struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+		uint32_t xid)
+{
+	NS_LOG_FUNCTION (this << swtch << xid);
+	std::cout << "HandlerArpPacket" << std::endl;
+
+	Ipv4Address serverIp = Ipv4Address::ConvertFrom (m_serverIpAddress);
+	Mac48Address serverMac = Mac48Address::ConvertFrom (m_serverMacAddress);
+
+	struct ofl_match_tlv *tlv;
+
+	// Get ARP operation
+	uint16_t arpOp;
+	tlv = oxm_match_lookup (OXM_OF_ARP_OP, (struct ofl_match*)msg->match);
+	memcpy (&arpOp, tlv->value, OXM_LENGTH (OXM_OF_ARP_OP));
+
+	// Get input port
+	uint32_t inPort;
+	tlv = oxm_match_lookup (OXM_OF_IN_PORT, (struct ofl_match*)msg->match);
+	memcpy (&inPort, tlv->value, OXM_LENGTH (OXM_OF_IN_PORT));
+
+	// Get source and target IP address
+	Ipv4Address srcIp, dstIp;
+	srcIp = ExtractIpv4Address (OXM_OF_ARP_SPA, (struct ofl_match*)msg->match);
+	dstIp = ExtractIpv4Address (OXM_OF_ARP_TPA, (struct ofl_match*)msg->match);
+
+	// Get Source MAC address
+	Mac48Address srcMac;// dstMac;
+	tlv = oxm_match_lookup (OXM_OF_ARP_SHA, (struct ofl_match*)msg->match);
+	srcMac.CopyFrom (tlv->value);
+	//tlv = oxm_match_lookup (OXM_OF_ARP_THA, (struct ofl_match*)msg->match);
+	//dstMac.CopyFrom (tlv->value);
+
+	/*ArpRequest arrivata da*/
+	std::cout << "IpSorgente:"<<srcIp<< " MacSorgente:"<<srcMac<< " PortaSorgente:"<< inPort << " TipoRichiesta:" << arpOp <<std::endl;
+
+	//Save, if not exist already, ArpEntry
+	SaveArpEntry(srcIp,srcMac);
+
+	// Check for ARP request
+	if (arpOp == ArpHeader::ARP_TYPE_REQUEST)
+	{
+
+		uint8_t replyData[64];
+		if(ExistArpEntry(dstIp)){
+			Mac48Address dstMac = GetArpEntry(dstIp);
+			Ptr<Packet> pkt = CreateArpReply(dstMac,dstIp,srcMac,srcIp);
+			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
+			pkt->CopyData(replyData,64);
+
+			// Response to the ArpRequest sender the info request
+			struct ofl_action_output *action =
+					(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+
+			action->header.type = OFPAT_OUTPUT;
+			action->port = OFPP_IN_PORT;
+			action->max_len = 0;
+
+			this->shortActionOuputCreator(action, OFPP_IN_PORT);
+
+			// Send the ARP Reply within an OpenFlow PacketOut message
+			struct ofl_msg_packet_out reply;
+
+			reply.header.type = OFPT_PACKET_OUT;
+			reply.buffer_id = OFP_NO_BUFFER;
+			reply.in_port = inPort;
+			reply.data_length = 64;
+			reply.data = &replyData[0];
+			reply.actions_num = 1;
+			reply.actions = (struct ofl_action_header**)&action;
+
+			//this->shortPacketOutCreator(&reply, OFP_NO_BUFFER ,replyData,64,inPort,action,1);
+
+			SendToSwitch (swtch, (struct ofl_msg_header*)&reply, xid);
+			free (action);
+
+		}else{
+			std::cout << "vado in ricerca che ancora non so fare" <<std::endl;
+
+			Ptr<Packet> pkt = CreateArpRequest(serverMac, serverIp, dstIp);
+			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
+			pkt->CopyData(replyData,64);
+
+			uint64_t j=1;
+			Ptr<const RemoteSwitch> rSwitch = GetRemoteSwitch(j);
+			while(rSwitch!=0){
+				std::cout << "rSwitch:"<<rSwitch<<std::endl;
+
+				// Send to every port of the switch from 2 to nPort
+				uint32_t nPortHostRSwitch = 2;
+				uint32_t nPortHostMaxRSwith = 3;//Porte extra vediamo che succede
+				for(uint32_t i=nPortHostRSwitch;i<=nPortHostMaxRSwith;i++){
+					std::cout << "rSwitch:"<<rSwitch<< "rSwitchPort:"<<i<<std::endl;
+					struct ofl_action_output *action =
+							(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+					/*
+					action->header.type = OFPAT_OUTPUT;
+					action->port = i; //Porte dello switch
+					action->max_len = 0;
+					 */
+					this->shortActionOuputCreator(action, i);
+
+					// Send the ARP Request within an OpenFlow PacketOut message
+					struct ofl_msg_packet_out reply;
+
+					//this->shortPacketOutCreator(reply, OFP_NO_BUFFER ,replyData,64,OFPP_ANY,action,1);
+					reply.header.type = OFPT_PACKET_OUT;
+					reply.buffer_id = OFP_NO_BUFFER;
+					reply.in_port = OFPP_ANY; //Porte del controller, in questo caso nessuna specifica, ma verrà inviato a uno switch tramite SendSwitch
+					reply.data_length = 64;
+					reply.data = &replyData[0];
+					reply.actions_num = 1;
+					reply.actions = (struct ofl_action_header**)&action;
+
+
+
+					/*Qualche problematica da risolvere qui*/
+					//struct ofl_msg_packet_out * reply = (struct ofl_msg_packet_out*)xmalloc (sizeof (struct ofl_msg_packet_out));;
+					//this->shortPacketOutCreator(reply, OFP_NO_BUFFER ,replyData,64,OFPP_ANY,action,1);
+					//std::cout<<"Stato length post short: "<< reply->data_length <<std::endl;
+
+
+
+					//SendToSwitch(rSwitch, (struct ofl_msg_header*)reply, xid);
+
+					SendToSwitch(rSwitch, (struct ofl_msg_header*)&reply, xid);
+				}
+				j++;
+				rSwitch = GetRemoteSwitch(j);
+			}
+		}
+	}else{
+		std::cout<<"Ho ricevuto un reply"<<std::endl;
+	}
+	// All handlers must free the message when everything is ok
+	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	return 0;
+}
+
+void
+QosController::shortPacketOutCreator(struct ofl_msg_packet_out &pkt, uint32_t bufferIdDatapath, uint8_t payload[],size_t payloadLength, uint32_t controllerOutPort, struct ofl_action_output *action, uint32_t action_number){
+	pkt.header.type = OFPT_PACKET_OUT;
+	pkt.buffer_id = bufferIdDatapath;//OFP_NO_BUFFER, every
+	pkt.in_port = controllerOutPort;
+	pkt.data = &payload[0]; //I dati iniziano da questo indirizzo
+	pkt.data_length = payloadLength; //successivi n indirizzi che contengono il payload
+	pkt.actions = (struct ofl_action_header**)&action; //Cosa farne del payload, quando il pkt_out arriva allo switch
+	pkt.actions_num = action_number; //FORSE, numero di azioni scritte in action
+	/*
+	pkt->header.type = OFPT_PACKET_OUT;
+	pkt->buffer_id = bufferIdDatapath;//OFP_NO_BUFFER, every
+	pkt->in_port = controllerOutPort;
+	pkt->data = &payload[0]; //I dati iniziano da questo indirizzo
+	pkt->data_length = payloadLength; //successivi n indirizzi che contengono il payload
+	pkt->actions = (struct ofl_action_header**)&action; //Cosa farne del payload, quando il pkt_out arriva allo switch
+	pkt->actions_num = action_number; //FORSE, numero di azioni scritte in action
+	*/
+}
+
+void
+QosController::shortActionOuputCreator(struct ofl_action_output* action, uint32_t outputSwitchPort){
+	//action = (struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+	action->header.type = OFPAT_OUTPUT;
+	action->port = outputSwitchPort;
+	action->max_len = 0;
+}
+
+ofl_err
+QosController::HandleConnectionRequest (
+		struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+		uint32_t xid)
+{
+	NS_LOG_FUNCTION (this << swtch << xid);
+
+	static uint32_t connectionCounter = 0;
+	connectionCounter++;
+
+	struct ofl_match_tlv *tlv;
+	Ipv4Address serverIp = Ipv4Address::ConvertFrom (m_serverIpAddress);
+	Mac48Address serverMac = Mac48Address::ConvertFrom (m_serverMacAddress);
+
+	// Get input port
+	uint32_t inPort;
+	tlv = oxm_match_lookup (OXM_OF_IN_PORT, (struct ofl_match*)msg->match);
+	memcpy (&inPort, tlv->value, OXM_LENGTH (OXM_OF_IN_PORT));
+
+	// Get Source MAC address
+	Mac48Address srcMac;
+	tlv = oxm_match_lookup (OXM_OF_ETH_SRC, (struct ofl_match*)msg->match);
+	srcMac.CopyFrom (tlv->value);
+
+	// Get source and destination IP address
+	Ipv4Address srcIp, dstIp;
+	srcIp = ExtractIpv4Address (OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
+	dstIp = ExtractIpv4Address (OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
+
+	// Get source and destination TCP ports
+	uint16_t srcPort, dstPort;
+	tlv = oxm_match_lookup (OXM_OF_TCP_SRC, (struct ofl_match*)msg->match);
+	memcpy (&srcPort, tlv->value, OXM_LENGTH (OXM_OF_TCP_SRC));
+	tlv = oxm_match_lookup (OXM_OF_TCP_DST, (struct ofl_match*)msg->match);
+	memcpy (&dstPort, tlv->value, OXM_LENGTH (OXM_OF_TCP_DST));
+
+	// Create an ARP request for further address resolution
+	SaveArpEntry (srcIp, srcMac);
+	uint8_t replyData[64];
+	Ptr<Packet> pkt = CreateArpRequest (serverMac, serverIp, srcIp);
+	NS_ASSERT_MSG (pkt->GetSize () == 64, "Invalid packet size.");
+	pkt->CopyData (replyData, 64);
+
+	struct ofl_action_output *arpAction =
+			(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+	arpAction->header.type = OFPAT_OUTPUT;
+	arpAction->port = OFPP_IN_PORT;
+	arpAction->max_len = 0;
+
+	// Send the ARP request within an OpenFlow PacketOut message
+	struct ofl_msg_packet_out arpRequest;
+	arpRequest.header.type = OFPT_PACKET_OUT;
+	arpRequest.buffer_id = OFP_NO_BUFFER;
+	arpRequest.in_port = inPort;
+	arpRequest.data_length = 64;
+	arpRequest.data = &replyData[0];
+	arpRequest.actions_num = 1;
+	arpRequest.actions = (struct ofl_action_header**)&arpAction;
+
+	SendToSwitch (swtch, (struct ofl_msg_header*)&arpRequest, 0);
+	free (arpAction);
+
+	// Check for valid service connection request
+	NS_ASSERT_MSG (dstIp.IsEqual (serverIp) && dstPort == m_serverTcpPort,
+			"Invalid IP address / TCP port.");
+
+	// Select an internal server to handle this connection
+	uint16_t serverNumber = 1 + (connectionCounter % 2);
+	NS_LOG_INFO ("Connection " << connectionCounter <<
+			" redirected to server " << serverNumber);
+
+	// If enable, install the metter entry for this connection
+	if (m_meterEnable)
+	{
+		std::ostringstream meterCmd;
+		meterCmd << "meter-mod cmd=add,flags=1,meter=" << connectionCounter
+				<< " drop:rate=" << m_meterRate.GetBitRate () / 1000;
+		DpctlExecute (swtch, meterCmd.str ());
+	}
+
+	// Install the flow entry for this TCP connection
+	std::ostringstream flowCmd;
+	flowCmd << "flow-mod cmd=add,table=0,prio=1000 eth_type=0x0800,ip_proto=6"
+			<< ",ip_src=" << srcIp
+			<< "ip_dst=" << m_serverIpAddress
+			<< ",tcp_dst=" << m_serverTcpPort
+			<< ",tcp_src=" << srcPort;
+	if (m_meterEnable)
+	{
+		flowCmd << " meter:" << connectionCounter;
+	}
+	flowCmd << " write:group=" << serverNumber;
+	DpctlExecute (swtch, flowCmd.str ());
+
+	// Create group action with server number
+	struct ofl_action_group *action =
+			(struct ofl_action_group*)xmalloc (sizeof (struct ofl_action_group));
+	action->header.type = OFPAT_GROUP;
+	action->group_id = serverNumber;
+
+	// Send the packet out to the switch.
+	struct ofl_msg_packet_out reply;
+	reply.header.type = OFPT_PACKET_OUT;
+	reply.buffer_id = msg->buffer_id;
+	reply.in_port = inPort;
+	reply.actions_num = 1;
+	reply.actions = (struct ofl_action_header**)&action;
+	reply.data_length = 0;
+	reply.data = 0;
+	if (msg->buffer_id == NO_BUFFER)
+	{
+		// No packet buffer. Send data back to switch
+		reply.data_length = msg->data_length;
+		reply.data = msg->data;
+	}
+
+	SendToSwitch (swtch, (struct ofl_msg_header*)&reply, xid);
+	free (action);
+
+	// All handlers must free the message when everything is ok
+	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	return 0;
+}
+
+Ipv4Address
+QosController::ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match)
+{
+	switch (oxm_of)
+	{
+	case OXM_OF_ARP_SPA:
+	case OXM_OF_ARP_TPA:
+	case OXM_OF_IPV4_DST:
+	case OXM_OF_IPV4_SRC:
+	{
+		uint32_t ip;
+		int size = OXM_LENGTH (oxm_of);
+		struct ofl_match_tlv *tlv = oxm_match_lookup (oxm_of, match);
+		memcpy (&ip, tlv->value, size);
+		return Ipv4Address (ntohl (ip));
+	}
+	default:
+		NS_ABORT_MSG ("Invalid IP field.");
+	}
+}
+
+Ptr<Packet>
+QosController::CreateArpRequest (Mac48Address srcMac, Ipv4Address srcIp,
+		Ipv4Address dstIp)
+{
+	NS_LOG_FUNCTION (this << srcMac << srcIp << dstIp);
+
+
+	Ptr<Packet> packet = Create<Packet> ();
+
+	// ARP header
+	ArpHeader arp;
+	arp.SetRequest (srcMac, srcIp, Mac48Address::GetBroadcast (), dstIp);
+	packet->AddHeader (arp);
+
+	// Ethernet header
+	EthernetHeader eth (false);
+	eth.SetSource (srcMac);
+	eth.SetDestination (Mac48Address::GetBroadcast ());
+	if (packet->GetSize () < 46)
+	{
+		uint8_t buffer[46];
+		memset (buffer, 0, 46);
+		Ptr<Packet> padd = Create<Packet> (buffer, 46 - packet->GetSize ());
+		packet->AddAtEnd (padd);
+	}
+	eth.SetLengthType (ArpL3Protocol::PROT_NUMBER);
+	packet->AddHeader (eth);
+
+	// Ethernet trailer
+	EthernetTrailer trailer;
+	if (Node::ChecksumEnabled ())
+	{
+		trailer.EnableFcs (true);
+	}
+	trailer.CalcFcs (packet);
+	packet->AddTrailer (trailer);
+
+	return packet;
+}
+
+Ptr<Packet>
+QosController::CreateArpReply (Mac48Address srcMac, Ipv4Address srcIp,
+		Mac48Address dstMac, Ipv4Address dstIp)
+{
+	NS_LOG_FUNCTION (this << srcMac << srcIp << dstMac << dstIp);
+
+	Ptr<Packet> packet = Create<Packet> ();
+
+	// ARP header
+	ArpHeader arp;
+	arp.SetReply (srcMac, srcIp, dstMac, dstIp);
+	packet->AddHeader (arp);
+
+	// Ethernet header
+	EthernetHeader eth (false);
+	eth.SetSource (srcMac);
+	eth.SetDestination (dstMac);
+	if (packet->GetSize () < 46)
+	{
+		uint8_t buffer[46];
+		memset (buffer, 0, 46);
+		Ptr<Packet> padd = Create<Packet> (buffer, 46 - packet->GetSize ());
+		packet->AddAtEnd (padd);
+	}
+	eth.SetLengthType (ArpL3Protocol::PROT_NUMBER);
+	packet->AddHeader (eth);
+
+	// Ethernet trailer
+	EthernetTrailer trailer;
+	if (Node::ChecksumEnabled ())
+	{
+		trailer.EnableFcs (true);
+	}
+	trailer.CalcFcs (packet);
+	packet->AddTrailer (trailer);
+
+	return packet;
+}
+
+void
+QosController::SaveArpEntry (Ipv4Address ipAddr, Mac48Address macAddr)
+{
+	std::pair<Ipv4Address, Mac48Address> entry (ipAddr, macAddr);
+	std::pair <IpMacMap_t::iterator, bool> ret;
+	ret = m_arpTable.insert (entry);
+	if (ret.second == true)
+	{
+		NS_LOG_INFO ("New ARP entry: " << ipAddr << " - " << macAddr);
+		return;
+	}
+}
+
+/*
+ * Modificata per non lanciare errori in caso non trovi la ARP entry nella mappa,
+ * andava in errore perché era tutto pensato, che un nuovo Host, connettendosi alla rete,
+ * necessitando di un ip, doveva passare per un dhcp, che non solo gli dava un ip, ma gli imponeva
+ * un triggerArp, per fargli mandare una ARP Request al controller, in modo che il controller potesse
+ * memorizzare il MAC associandolo all'Ip nella sua Entry.
+ * Io non uso DHCP, e non installo il triggher
+ */
+Mac48Address
+QosController::GetArpEntry (Ipv4Address ip)
+{
+	IpMacMap_t::iterator ret;
+	ret = m_arpTable.find (ip);
+	if (ret != m_arpTable.end ())
+	{
+		std::cout << "MAC associato all' IpDest TROVATO" << std::endl;
+		NS_LOG_INFO ("Found ARP entry: " << ip << " - " << ret->second);
+		return ret->second;
+	}
+	std::cout << "MAC associato all' IpDest NON TROVATO" << std::endl;
+	return ret->second;
+	//NS_ABORT_MSG ("No ARP information for this IP.");
+
+}
+
+
+/*
+ * Aggiunta perchè applico un metodo di risoluzione ARP diverso da Chavez
+ */
+bool
+QosController::ExistArpEntry (Ipv4Address ip)
+{
+	IpMacMap_t::iterator ret;
+	ret = m_arpTable.find(ip);
+	if(ret!=m_arpTable.end())
+		return true;
+	return false;
+}
+
+/*
+void
+QoSController::SetWeight(std::string weight)
+{
+        InputWeight=weight;
+}
+ */
+
+
