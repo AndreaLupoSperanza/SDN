@@ -20,7 +20,6 @@
 
 #include <ns3/network-module.h>
 #include <ns3/internet-module.h>
-//#include <ns3/ofswitch13-controller.h>
 #include "qos-controller.h"
 
 NS_LOG_COMPONENT_DEFINE ("QosController");
@@ -50,40 +49,40 @@ TypeId
 QosController::GetTypeId (void)
 {
 	static TypeId tid = TypeId ("ns3::QosController")
-	    .SetParent<OFSwitch13Controller> ()
-	    .SetGroupName ("OFSwitch13")
-	    .AddConstructor<QosController> ()
-	    .AddAttribute ("EnableMeter",
-	                   "Enable per-flow mettering.",
-	                   BooleanValue (false),
-	                   MakeBooleanAccessor (&QosController::m_meterEnable),
-	                   MakeBooleanChecker ())
-	    .AddAttribute ("MeterRate",
-	                   "Per-flow meter rate.",
-	                   DataRateValue (DataRate ("256Kbps")),
-	                   MakeDataRateAccessor (&QosController::m_meterRate),
-	                   MakeDataRateChecker ())
-	    .AddAttribute ("LinkAggregation",
-	                   "Enable link aggregation.",
-	                   BooleanValue (true),
-	                   MakeBooleanAccessor (&QosController::m_linkAggregation),
-	                   MakeBooleanChecker ())
-	    .AddAttribute ("ServerIpAddr",
-	                   "Server IPv4 address.",
-	                   AddressValue (Address (Ipv4Address ("10.1.1.1"))),
-	                   MakeAddressAccessor (&QosController::m_serverIpAddress),
-	                   MakeAddressChecker ())
-	    .AddAttribute ("ServerTcpPort",
-	                   "Server TCP port.",
-	                   UintegerValue (9),
-	                   MakeUintegerAccessor (&QosController::m_serverTcpPort),
-	                   MakeUintegerChecker<uint64_t> ())
-	    .AddAttribute ("ServerMacAddr",
-	                   "Server MAC address.",
-	                   AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
-	                   MakeAddressAccessor (&QosController::m_serverMacAddress),
-	                   MakeAddressChecker ())
-	  ;																																			;																																		;
+	    														.SetParent<OFSwitch13Controller> ()
+																.SetGroupName ("OFSwitch13")
+																.AddConstructor<QosController> ()
+																.AddAttribute ("EnableMeter",
+																		"Enable per-flow mettering.",
+																		BooleanValue (false),
+																		MakeBooleanAccessor (&QosController::m_meterEnable),
+																		MakeBooleanChecker ())
+																		.AddAttribute ("MeterRate",
+																				"Per-flow meter rate.",
+																				DataRateValue (DataRate ("256Kbps")),
+																				MakeDataRateAccessor (&QosController::m_meterRate),
+																				MakeDataRateChecker ())
+																				.AddAttribute ("LinkAggregation",
+																						"Enable link aggregation.",
+																						BooleanValue (true),
+																						MakeBooleanAccessor (&QosController::m_linkAggregation),
+																						MakeBooleanChecker ())
+																						.AddAttribute ("ServerIpAddr",
+																								"Server IPv4 address.",
+																								AddressValue (Address (Ipv4Address ("10.1.1.1"))),
+																								MakeAddressAccessor (&QosController::m_serverIpAddress),
+																								MakeAddressChecker ())
+																								.AddAttribute ("ServerTcpPort",
+																										"Server TCP port.",
+																										UintegerValue (9),
+																										MakeUintegerAccessor (&QosController::m_serverTcpPort),
+																										MakeUintegerChecker<uint64_t> ())
+																										.AddAttribute ("ServerMacAddr",
+																												"Server MAC address.",
+																												AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
+																												MakeAddressAccessor (&QosController::m_serverMacAddress),
+																												MakeAddressChecker ())
+																												;																																			;																																		;
 	return tid;
 }
 
@@ -114,17 +113,17 @@ QosController::HandlePacketIn (
 
 		if (ethType == ArpL3Protocol::PROT_NUMBER)
 		{
-			std::cout << "GIUSTO" << std::endl;
 			// ARP packet
 			return HandleArpPacketIn (msg, swtch, xid);
 		}
 		else if (ethType == Ipv4L3Protocol::PROT_NUMBER)
 		{
-			std::cout << "OPSSSSS" << std::endl;
 			// Must be a TCP packet for connection request
 			return HandleConnectionRequest (msg, swtch, xid);
 		}
 	}
+
+
 
 	// All handlers must free the message when everything is ok
 	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
@@ -141,12 +140,31 @@ QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
 	if (swtch->GetDpId () == 1)
 	{
 		ConfigureBorderSwitch_FUB (swtch);
+		//attivo la possibilità di un flusso UDP da Switch1 a Switch2 per il test
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
 	}
 	else if (swtch->GetDpId () == 2)
 	{
-		//      ConfigureAggregationSwitch (swtch);
-		ConfigureAggregationSwitch_FUB (swtch);
+		ConfigureBorderSwitch_FUB (swtch);
 	}
+
+	portSwitchConfiguration(swtch,1);
+
+}
+
+void
+QosController::portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint64_t port){
+
+	struct ofl_msg_port_mod pkt;
+	pkt.header.type=OFPT_PORT_MOD;
+	pkt.port_no=port;
+	pkt.config=OFPPC_NO_FWD;
+	pkt.mask=OFPPC_NO_FWD;
+	//pkt.advertise=OFPPS_BLOCKED;
+
+	std::cout << "inviato il blocco" << std::endl;
+
+	SendToSwitch (swtch, (struct ofl_msg_header*)&pkt, GetNextXid());
 }
 
 void
@@ -239,26 +257,27 @@ QosController::ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 	NS_LOG_FUNCTION (this << swtch);
 
 	// For packet-in messages, send only the first 128 bytes to the controller
-	DpctlExecute (swtch, "set-config miss=128");
+	//DpctlExecute (swtch, "set-config miss=128");
 	/*----------------------------------------------------------------------*/
 	//CONCENTRATI QUI
-
 	std::cout << "Provo ad impostare la regola" << std::endl;
 
 	// Redirect ARP requests to the controller
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 " //imposta una regola di flsso, e aggiungila in tabella 0 con priorità 20
-			"eth_type=0x0806,arp_op=1 apply:output=ctrl"); //tipo di frame ethernet, arp_operatione = Arp Request applica:manda al controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0806,arp_op=1 apply:output=ctrl");
 
-	//Redirect ARP Reply from any Host to Controller IF the destination is the controller
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=100 "
-				"eth_type=0x0806,arp_op=2 apply:output=1");
+	//Redirect ARP Reply from any Host to Controller
+	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0806,arp_op=2 apply:output=ctrl");
+
+
 	/*
 	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
 			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1 apply:output=ctrl");//,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1,
 
 	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
 			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01 apply:output=ctrl");
-			*/
+	 */
 	/*
 	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
 				"eth_type=0x0806,in_port=ctrl,arp_op=1 apply:output=1,output=2,output=3,output=4");
@@ -425,12 +444,18 @@ QosController::HandleArpPacketIn (
 	//Save, if not exist already, ArpEntry
 	SaveArpEntry(srcIp,srcMac);
 
+	//Generate ad IP based flow to the new entry
+	std::ostringstream flowDest;
+			flowDest << "flow-mod table=0,cmd=add eth_type=0x800,ip_dst="<<srcIp<<" apply:output="<<inPort;
+	DpctlExecute(swtch,flowDest.str());
+
 	// Check for ARP request
 	if (arpOp == ArpHeader::ARP_TYPE_REQUEST)
 	{
 
 		uint8_t replyData[64];
 		if(ExistArpEntry(dstIp)){
+			std::cout << "ArpEntry Trovata, quanto è bella" <<std::endl;
 			Mac48Address dstMac = GetArpEntry(dstIp);
 			Ptr<Packet> pkt = CreateArpReply(dstMac,dstIp,srcMac,srcIp);
 			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
@@ -440,11 +465,7 @@ QosController::HandleArpPacketIn (
 			struct ofl_action_output *action =
 					(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
 
-			action->header.type = OFPAT_OUTPUT;
-			action->port = OFPP_IN_PORT;
-			action->max_len = 0;
-
-			this->shortActionOuputCreator(action, OFPP_IN_PORT);
+			this->shortActionOuputCreator(action, OFPP_IN_PORT, 0);//rimandalo alla porta di provenienza del messaggio che non hai saputo gestire
 
 			// Send the ARP Reply within an OpenFlow PacketOut message
 			struct ofl_msg_packet_out reply;
@@ -463,56 +484,71 @@ QosController::HandleArpPacketIn (
 			free (action);
 
 		}else{
-			std::cout << "vado in ricerca che ancora non so fare" <<std::endl;
+			std::cout << "ArpEntry NON trovata, vado in ricerca" <<std::endl;
 
 			Ptr<Packet> pkt = CreateArpRequest(serverMac, serverIp, dstIp);
 			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
-			pkt->CopyData(replyData,64);
+			pkt->CopyData(replyData,64);//copia pkt in replydata che ha una lunghezza di 64 byte
 
-			uint64_t j=1;
+			uint64_t j=1;//Parto da 1 perchè è da 1 che inizia la nomenclatura degli switch
 			Ptr<const RemoteSwitch> rSwitch = GetRemoteSwitch(j);
 			while(rSwitch!=0){
 				std::cout << "rSwitch:"<<rSwitch<<std::endl;
-
+				/*
 				// Send to every port of the switch from 2 to nPort
 				uint32_t nPortHostRSwitch = 2;
-				uint32_t nPortHostMaxRSwith = 3;//Porte extra vediamo che succede
+				uint32_t nPortHostMaxRSwith = 3;// il metodo ha una falla, se anche solo una action da errore, le altre NON vengono effettuate
+				struct ofl_action_output * multyAction[nPortHostMaxRSwith-nPortHostRSwitch];
+
+				uint32_t numberOfActions = 0;
+
+
 				for(uint32_t i=nPortHostRSwitch;i<=nPortHostMaxRSwith;i++){
 					std::cout << "rSwitch:"<<rSwitch<< "rSwitchPort:"<<i<<std::endl;
-					struct ofl_action_output *action =
-							(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
-					/*
-					action->header.type = OFPAT_OUTPUT;
-					action->port = i; //Porte dello switch
-					action->max_len = 0;
-					 */
-					this->shortActionOuputCreator(action, i);
 
-					// Send the ARP Request within an OpenFlow PacketOut message
-					struct ofl_msg_packet_out reply;
+					multyAction[numberOfActions] = (struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
 
-					//this->shortPacketOutCreator(reply, OFP_NO_BUFFER ,replyData,64,OFPP_ANY,action,1);
-					reply.header.type = OFPT_PACKET_OUT;
-					reply.buffer_id = OFP_NO_BUFFER;
-					reply.in_port = OFPP_ANY; //Porte del controller, in questo caso nessuna specifica, ma verrà inviato a uno switch tramite SendSwitch
-					reply.data_length = 64;
-					reply.data = &replyData[0];
-					reply.actions_num = 1;
-					reply.actions = (struct ofl_action_header**)&action;
+					this->shortActionOuputCreator(multyAction[numberOfActions], i, 0);
 
-
-
-					/*Qualche problematica da risolvere qui*/
-					//struct ofl_msg_packet_out * reply = (struct ofl_msg_packet_out*)xmalloc (sizeof (struct ofl_msg_packet_out));;
-					//this->shortPacketOutCreator(reply, OFP_NO_BUFFER ,replyData,64,OFPP_ANY,action,1);
-					//std::cout<<"Stato length post short: "<< reply->data_length <<std::endl;
-
-
-
-					//SendToSwitch(rSwitch, (struct ofl_msg_header*)reply, xid);
-
-					SendToSwitch(rSwitch, (struct ofl_msg_header*)&reply, xid);
+					numberOfActions++;
 				}
+
+
+				// Send the ARP Request within an OpenFlow PacketOut message
+				struct ofl_msg_packet_out reply;
+
+				reply.header.type = OFPT_PACKET_OUT;
+				reply.buffer_id = OFP_NO_BUFFER;
+				reply.in_port = OFPP_ANY;
+				reply.data_length = 64;
+				reply.data = &replyData[0];
+				reply.actions = (struct ofl_action_header**)&multyAction[0];
+				reply.actions_num = numberOfActions;
+
+				std::cout<< "indirizzo replyData[0]: "<< &replyData <<std::endl;
+				 */
+
+				// Prova della tipologia di porte per mandare i pacchetti
+				struct ofl_action_output *action =
+						(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+
+				this->shortActionOuputCreator(action, OFPP_FLOOD, 0); //lo invierà a tutte le porte non di rete?
+
+				// Send the ARP Reply within an OpenFlow PacketOut message
+				struct ofl_msg_packet_out reply;
+
+				reply.header.type = OFPT_PACKET_OUT;
+				reply.buffer_id = OFP_NO_BUFFER;
+				reply.in_port = OFPP_CONTROLLER;//da chi proviene il messaggio packet_out
+				reply.data_length = 64;
+				reply.data = &replyData[0];
+				reply.actions_num = 1;
+				reply.actions = (struct ofl_action_header**)&action;
+
+
+				/*Qualche problematica da risolvere qui*/
+				//reply = this->shortPacketOutCreator(OFP_NO_BUFFER , replyData, 64, OFPP_ANY, multyAction[0], numberOfActions);
+				SendToSwitch(rSwitch, (struct ofl_msg_header*)&reply, xid);
 				j++;
 				rSwitch = GetRemoteSwitch(j);
 			}
@@ -525,32 +561,27 @@ QosController::HandleArpPacketIn (
 	return 0;
 }
 
-void
-QosController::shortPacketOutCreator(struct ofl_msg_packet_out &pkt, uint32_t bufferIdDatapath, uint8_t payload[],size_t payloadLength, uint32_t controllerOutPort, struct ofl_action_output *action, uint32_t action_number){
+
+ofl_msg_packet_out
+QosController::shortPacketOutCreator(uint32_t bufferIdDatapathType, uint8_t * firstElementOfPayload,size_t payloadLength, uint32_t controllerOutPortToSend, struct ofl_action_output *pointerAtTheFirstAction, uint32_t numberOfTotalAction){
+	struct ofl_msg_packet_out pkt;
 	pkt.header.type = OFPT_PACKET_OUT;
-	pkt.buffer_id = bufferIdDatapath;//OFP_NO_BUFFER, every
-	pkt.in_port = controllerOutPort;
-	pkt.data = &payload[0]; //I dati iniziano da questo indirizzo
+	pkt.buffer_id = bufferIdDatapathType;//OFP_NO_BUFFER, every
+	pkt.in_port = controllerOutPortToSend;
+	pkt.data = firstElementOfPayload; //I dati iniziano da questo indirizzo
+	std::cout<< "indirizzo firstElementOfPayload: "<< firstElementOfPayload <<std::endl;
 	pkt.data_length = payloadLength; //successivi n indirizzi che contengono il payload
-	pkt.actions = (struct ofl_action_header**)&action; //Cosa farne del payload, quando il pkt_out arriva allo switch
-	pkt.actions_num = action_number; //FORSE, numero di azioni scritte in action
-	/*
-	pkt->header.type = OFPT_PACKET_OUT;
-	pkt->buffer_id = bufferIdDatapath;//OFP_NO_BUFFER, every
-	pkt->in_port = controllerOutPort;
-	pkt->data = &payload[0]; //I dati iniziano da questo indirizzo
-	pkt->data_length = payloadLength; //successivi n indirizzi che contengono il payload
-	pkt->actions = (struct ofl_action_header**)&action; //Cosa farne del payload, quando il pkt_out arriva allo switch
-	pkt->actions_num = action_number; //FORSE, numero di azioni scritte in action
-	*/
+	pkt.actions = (struct ofl_action_header**)&pointerAtTheFirstAction; //Cosa farne del payload, quando il pkt_out arriva allo switch
+	pkt.actions_num = numberOfTotalAction; //FORSE, numero di azioni scritte in action
+	return pkt;
 }
 
 void
-QosController::shortActionOuputCreator(struct ofl_action_output* action, uint32_t outputSwitchPort){
+QosController::shortActionOuputCreator(struct ofl_action_output* action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta){
 	//action = (struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
 	action->header.type = OFPAT_OUTPUT;
 	action->port = outputSwitchPort;
-	action->max_len = 0;
+	action->max_len = lunghezzaMassimaDellaRisposta;
 }
 
 ofl_err
@@ -810,14 +841,13 @@ QosController::GetArpEntry (Ipv4Address ip)
 		return ret->second;
 	}
 	std::cout << "MAC associato all' IpDest NON TROVATO" << std::endl;
-	return ret->second;
-	//NS_ABORT_MSG ("No ARP information for this IP.");
+	NS_ABORT_MSG ("No ARP information for this IP.");
 
 }
 
 
 /*
- * Aggiunta perchè applico un metodo di risoluzione ARP diverso da Chavez
+ * Controlla se esiste, nella mappa delle arp entry, una determinata chiave
  */
 bool
 QosController::ExistArpEntry (Ipv4Address ip)
@@ -829,12 +859,7 @@ QosController::ExistArpEntry (Ipv4Address ip)
 	return false;
 }
 
-/*
-void
-QoSController::SetWeight(std::string weight)
-{
-        InputWeight=weight;
-}
- */
+
+
 
 

@@ -37,8 +37,8 @@ main (int argc, char *argv[])
 	bool verbose = false;
 	bool trace = true;
 
-	std::string prot                 = "udp";
-	std::string dataNoise            = "1Mbps"; //quanto traffico deve passare
+	std::string prot                 = "udp"; //protocollo usato per il dataNoise
+	std::string dataNoise            = "10Mbps"; //quanto traffico deve passare
 
 	// Configure command line parameters
 	CommandLine cmd;
@@ -214,7 +214,7 @@ main (int argc, char *argv[])
 
 	ApplicationContainer SkinApps; //Qui vanno aggiunte le installazioni per ogni server che riceve
 	PacketSinkHelper sink11 (prot_code, InetSocketAddress (Ipv4Address::GetAny (), 5111));
-	SkinApps.Add(sink11.Install (hosts.Get (0)));  //host_0 riceve in base alla regola sink11
+	SkinApps.Add(sink11.Install (servers.Get (0)));  //host_0 riceve in base alla regola sink11
 	SkinApps.Start (Seconds (1.0));
 	SkinApps.Stop (Seconds (simTime+1));
 
@@ -228,6 +228,8 @@ main (int argc, char *argv[])
 		csmaHelper.EnablePcap ("hosts", hosts, true);
 		csmaHelper.EnablePcap ("servers", servers, true);
 	}
+
+
 
 	// Run the simulation
 	Simulator::Stop (Seconds (simTime));

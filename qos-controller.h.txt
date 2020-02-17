@@ -162,13 +162,16 @@ private:
 	 * \param numeber of action contain in action
 	 * \return the reference at the packet_out
 	 */
-	void shortPacketOutCreator(struct ofl_msg_packet_out &pkt, uint32_t bufferIdDatapath, uint8_t payload[],size_t payloadLength, uint32_t controllerOutPort, struct ofl_action_output *action, uint32_t action_number);
-
+	ofl_msg_packet_out shortPacketOutCreator(uint32_t bufferIdDatapathType, uint8_t * firstElementOfPayload,size_t payloadLength, uint32_t controllerOutPortToSend, struct ofl_action_output *pointerAtTheFirstAction, uint32_t numberOfTotalAction);
 	/**
 	 *
 	 */
-	void shortActionOuputCreator(struct ofl_action_output *action, uint32_t outputSwitchPort);
+	void shortActionOuputCreator(struct ofl_action_output * action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta);
 
+	/*
+	 *
+	 */
+	void portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint64_t port);
 
 		Address   m_serverIpAddress;    //!< Virtual server IP address
 		uint16_t  m_serverTcpPort;      //!< Virtual server TCP port
@@ -184,7 +187,9 @@ private:
 		typedef std::map<Ipv4Address, Mac48Address> IpMacMap_t;
 		IpMacMap_t m_arpTable;          //!< ARP resolution table.
 
-
+		/** Map saving <Ptr<const RemoteSwitch> / uint64_t port number > */
+		typedef std::map< Ptr<const RemoteSwitch> , uint64_t > RemoteSwitchTotPorts;
+		RemoteSwitchTotPorts m_switchPorts;
 	};
 
 #endif /* QOS_CONTROLLER_H */
