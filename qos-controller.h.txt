@@ -109,7 +109,33 @@ private:
 	 * \return The IPv4 address.
 	 */
 	Ipv4Address ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match);
-
+	/**
+	 *Extract an Max address form packet match.
+	 *\param oxm_of the OXM_IF_* MAC field.
+	 *\param match The ofl_match structure pointer.
+	 *\return The MAC address.
+	 */
+	Mac48Address ExtractMacAddress (uint32_t oxm_of, struct ofl_match* match);
+	/**
+	 *
+	 */
+	uint16_t ExtractEthernetType (struct ofl_match* match);
+	/**
+	 *
+	 */
+	uint16_t ExtractArpOperationCode(struct ofl_match* match);
+	/**
+	 *
+	 */
+	uint32_t ExtractInPort(struct ofl_match* match);
+	/**
+	 *
+	 */
+	uint8_t ExtractIpProtocolID(struct ofl_match* match);
+	/**
+	 *
+	 */
+	uint16_t ExtractUdpPort( uint32_t oxm_of , struct ofl_match* match);
 	/**
 	 * Create an ARP request packet, encapsulated inside of an Ethernet frame.
 	 * \param srcMac Source MAC address.
@@ -119,7 +145,6 @@ private:
 	 */
 	Ptr<Packet> CreateArpRequest (Mac48Address srcMac, Ipv4Address srcIp,
 			Ipv4Address dstIp);
-
 	/**
 	 * Create an ARP reply packet, encapsulated inside of an Ethernet frame.
 	 * \param srcMac Source MAC address.
@@ -132,64 +157,174 @@ private:
 			Mac48Address dstMac, Ipv4Address dstIp);
 
 	/**
+	 *
+	 */
+	void shortActionOuputCreator(struct ofl_action_output * action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta);
+
+	/*
+	 *Crea un pacchetto OFPT_PORT_MOD che imposta una determinata porta come NO-FORWARD
+	 *\param swtch Lo switch di cui si vuole modificare l'impostazione di una porta
+	 *\param port La porta dello switch da modificare
+	 */
+	void portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint32_t port);
+	/*
+	 *Crea un pacchetto OFPT_PORT_MOD che imposta una determinata porta come NO-FORWARD
+	 *\param switchDpId Il datapath id dello switch di cui si vuole modificare l'impostazione di una porta
+	 *\param port La porta dello switch da modificare
+	 */
+	void portSwitchConfiguration(uint64_t switchDpId, uint32_t port);
+
+	/*
+	 *Crea ed invia un pacchetto di esplorazione di rete allo switch indicato
+	 *\param swtch Lo switch a cui si vuole inviare il pacchetto di esplorazione di rete
+	 */
+	void switchNetworkExplore(Ptr<const RemoteSwitch> swtch);
+	/*
+	 *Crea un pacchetto UDP senza payload, con portDst=networkExplorerUdpPort e portSrc = portDst+fromSwitchId
+	 *\param fromSwitchId Il datapath id dello switch a cui si vuole inviare il pacchetto
+	 *\return Il riferimento al pacchetto creato descritto sopra
+	 */
+	Ptr<Packet> CreateUdpExplorerPacket(uint64_t fromSwitchId);
+	/*
+	 *Lancia una pacchetti di esplorazione di rete a tutti gli switch, che verranno poi captati da altre funzioni
+	 */
+	void NetworkExplorerFunction();
+	/*
+	 *
+	 */
+	bool ExistSwitchEntry (uint64_t swtchDpId);
+	/*
+	 *
+	 */
+	int SavePortForwardEntry (uint64_t from, uint64_t to, uint32_t port);
+	/*
+	 *
+	 */
+	uint32_t GetPortForwardEntry (Ptr<const RemoteSwitch> switchFrom, Ptr<const RemoteSwitch> switchTo);
+	/*
+	 *
+	 */
+	uint32_t GetPortForwardEntry (uint64_t from, uint64_t to);
+	/*
+	 *
+	 */
+	//void NetworkPortNoForwardModSetter();
+	/*
+	 *Usando la PortFrowardTable, che indica, se esiste, la porta di passaggio da uno switch verso un altro
+	 *Genera il grafo della rete degli switch, in base al numero degli switch contati nella rete
+	 *\param nSwitch Il numero degli switch che hanno fatto handshake
+	 *\return Il riferimento alla matrice nSwitchxnSwitch che rappresenta il grafo associato alla rete
+	 */
+	int ** GrafeGeneration(const int nSwitch);
+	/*
+	 *Usando il networkGrafe e l'algorimo di floydWarshall modificato
+	 *Estrae la matrice dei successivi nSwitchxnSwitch da cui si può estrarre il path tra ogni coppia di nodi
+	 *\param graph Il grafo su cui applicare l'algoritmo
+	 *\param V Il numero dei nodi del grafo
+	 */
+	int ** floydWarshall (int** graph, const int V);
+	/*
+	 *Estrae il cammino minimo , nodo per nodo, tra due nodi del grafo
+	 *\param nextMatrix La matrice dei successivi generata da floydWarshall
+	 *\param V Il numero dei nodi della rete
+	 *\param from Il Datapath id dello switch di partenza
+	 *\param to Il datapath id delo switch di arrivo
+	 *\return La lista dei nodi da attraversare partendo da from fino a to
+	 */
+	std::list<int> extractPath(int ** graph, const int V, int from, int to);
+	/*
+	 *
+	 */
+	std::list<int> extractPath(int ** graph, const int V, Ptr<const RemoteSwitch> fromSwtch, Ptr<const RemoteSwitch> toSwtch);
+	/*
+	 *Stampa la lista passata come parametro
+	 *\param list La lista da stampare
+	 */
+	void showElementList(std::list<int> list);
+	/*
+	 *
+	 */
+	int minimumDist(int dist[], bool Dset[], int vertex);
+	/*
+	 *
+	 */
+	void dijkstra(int** graph,int src, int vertex);
+	/*
+	 *Lancia una serie di Flow-Mod sugli switch identificati dal cammino passato come parametro
+	 *Permette quindi ad un flusso con le determinate caratteristiche passate come parametro di arrivare
+	 *da sorgente a destinazione
+	 *\param path La lista dei nodi che fanno parte del cammino in ordine di successione
+	 *\param
+	 */
+	void setFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst);
+	/**
 	 * Save the pair IP / MAC address in ARP table.
 	 * \param ipAddr The IPv4 address.
 	 * \param macAddr The MAC address.
 	 */
 	void SaveArpEntry (Ipv4Address ipAddr, Mac48Address macAddr);
-
 	/**
 	 * Perform an ARP resolution
 	 * \param ip The Ipv4Address to search.
 	 * \return The MAC address for this ip.
 	 */
 	Mac48Address GetArpEntry (Ipv4Address ip);
+	/**
+	 * Salva la coppia DpId / Switch Pountr nella DpId Table
+	 * \param dpIdSwitch Il datapath id dello switch
+	 * \param swtch Il riferimento allo switch
+	 */
+	int SaveSwitchEntry(uint64_t dpIdSwitch, Ptr<const RemoteSwitch> swtch);
 
 	/**
-	 * Controll if is possible to do an ARP resolution to an Ip
-	 * \parm ip The Ipv4Addres to search and controll if is memorize
-	 * \return true if is find
+	 * Controlla se esiste la arp entry riferita ad un ip
+	 * \parm ip L'ip da usare come chiave
+	 * \return true se è stata un trovata una corrispondenza in base alla chiave
 	 */
 	bool ExistArpEntry (Ipv4Address ip);
-
-	/**
-	 * Create a packet_out in short space of code
-	 * \param the empty packet
-	 * \param payload to send at the switch
-	 * \param payload length
-	 * \param port of the controller use to send the packetOut (each port is connect to a switch)
-	 * \param action that the switch that receives the pkt_out must do with the payload
-	 * \param numeber of action contain in action
-	 * \return the reference at the packet_out
-	 */
-	ofl_msg_packet_out shortPacketOutCreator(uint32_t bufferIdDatapathType, uint8_t * firstElementOfPayload,size_t payloadLength, uint32_t controllerOutPortToSend, struct ofl_action_output *pointerAtTheFirstAction, uint32_t numberOfTotalAction);
-	/**
-	 *
-	 */
-	void shortActionOuputCreator(struct ofl_action_output * action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta);
-
 	/*
-	 *
+	 *Salva la coppia Ip / Switch Datapath Id nella
+	 *\param address Indirizzo ip dell'host da memorizzare
+	 *\param swtchDpId Il datapath id dello switch che ha direttamente connesso l'host
 	 */
-	void portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint64_t port);
+	void SaveIpDestEntry(Ipv4Address address,uint64_t swtchDpId);
+	/*
+	 *Ritorna il datapath id dello switch dove l'host è connesso
+	 *\param address L'ip dell'host
+	 *\return Il datapath id dello switch su cui si trova l'host
+	 */
+	uint64_t GetIpDestEntry(Ipv4Address address);
 
-		Address   m_serverIpAddress;    //!< Virtual server IP address
-		uint16_t  m_serverTcpPort;      //!< Virtual server TCP port
-		Address   m_serverMacAddress;   //!< Border switch MAC address
-		bool      m_meterEnable;        //!< Enable per-flow mettering
-		DataRate  m_meterRate;          //!< Per-flow meter rate
-		bool      m_linkAggregation;    //!< Enable link aggregation
+	Address   m_serverIpAddress;    //!< Virtual server IP address
+	uint16_t  m_serverTcpPort;      //!< Virtual server TCP port
+	Address   m_serverMacAddress;   //!< Border switch MAC address
+	bool      m_meterEnable;        //!< Enable per-flow mettering
+	DataRate  m_meterRate;          //!< Per-flow meter rate
+	bool      m_linkAggregation;    //!< Enable link aggregation
 
-		std::string    InputWeight;          //input used to balance the two flows
+	uint16_t networkExplorerUdpPort = 11000; //!< Virtual udp port use to network exploring
+	int firstNetworkExplorer = 1; //!< To first netorkExplorer activation only
+	int** networkGrafe;
+	int ** networkMatrixPath;
+	int nSwitch = 0;
+
+	std::string    InputWeight;          //input used to balance the two flows
 
 
-		/** Map saving <IPv4 address / MAC address> */
-		typedef std::map<Ipv4Address, Mac48Address> IpMacMap_t;
-		IpMacMap_t m_arpTable;          //!< ARP resolution table.
+	/** Map saving <IPv4 address / MAC address> */
+	typedef std::map<Ipv4Address, Mac48Address> IpMacMap_t;
+	IpMacMap_t m_arpTable;          //!< ARP resolution table.
 
-		/** Map saving <Ptr<const RemoteSwitch> / uint64_t port number > */
-		typedef std::map< Ptr<const RemoteSwitch> , uint64_t > RemoteSwitchTotPorts;
-		RemoteSwitchTotPorts m_switchPorts;
-	};
+	/** Map saving < DatapathId / RemoteSwitch > */
+	typedef std::map< uint64_t , Ptr<const RemoteSwitch> > DpIdRemoteSwitch_t;
+	DpIdRemoteSwitch_t m_dpIdTable;
+
+	typedef std::map<std::pair<uint64_t,uint64_t>,uint32_t> PortForwardFromS1ToS2_t;
+	PortForwardFromS1ToS2_t m_PortFrowardTable;
+
+	typedef std::map<Ipv4Address,uint64_t> IpSwitchMap_t;
+	IpSwitchMap_t m_ipDestTable;
+
+};
 
 #endif /* QOS_CONTROLLER_H */

@@ -1,3 +1,9 @@
+/*
+ * quos-controller-backup.cc
+ *
+ *  Created on: 5 feb 2020
+ *      Author: openflow
+ */
 /* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
 /*
  * Copyright (c) 2016 University of Campinas (Unicamp)
@@ -18,6 +24,8 @@
  * Author:  Luciano Chaves <luciano@lrc.ic.unicamp.br>
  */
 
+#define INF 99999
+
 #include <ns3/network-module.h>
 #include <ns3/internet-module.h>
 #include "qos-controller.h"
@@ -28,7 +36,6 @@ NS_OBJECT_ENSURE_REGISTERED (QosController);
 QosController::QosController ()
 {
 	NS_LOG_FUNCTION (this);
-
 }
 
 QosController::~QosController ()
@@ -49,40 +56,40 @@ TypeId
 QosController::GetTypeId (void)
 {
 	static TypeId tid = TypeId ("ns3::QosController")
-	    														.SetParent<OFSwitch13Controller> ()
-																.SetGroupName ("OFSwitch13")
-																.AddConstructor<QosController> ()
-																.AddAttribute ("EnableMeter",
-																		"Enable per-flow mettering.",
-																		BooleanValue (false),
-																		MakeBooleanAccessor (&QosController::m_meterEnable),
-																		MakeBooleanChecker ())
-																		.AddAttribute ("MeterRate",
-																				"Per-flow meter rate.",
-																				DataRateValue (DataRate ("256Kbps")),
-																				MakeDataRateAccessor (&QosController::m_meterRate),
-																				MakeDataRateChecker ())
-																				.AddAttribute ("LinkAggregation",
-																						"Enable link aggregation.",
-																						BooleanValue (true),
-																						MakeBooleanAccessor (&QosController::m_linkAggregation),
-																						MakeBooleanChecker ())
-																						.AddAttribute ("ServerIpAddr",
-																								"Server IPv4 address.",
-																								AddressValue (Address (Ipv4Address ("10.1.1.1"))),
-																								MakeAddressAccessor (&QosController::m_serverIpAddress),
-																								MakeAddressChecker ())
-																								.AddAttribute ("ServerTcpPort",
-																										"Server TCP port.",
-																										UintegerValue (9),
-																										MakeUintegerAccessor (&QosController::m_serverTcpPort),
-																										MakeUintegerChecker<uint64_t> ())
-																										.AddAttribute ("ServerMacAddr",
-																												"Server MAC address.",
-																												AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
-																												MakeAddressAccessor (&QosController::m_serverMacAddress),
-																												MakeAddressChecker ())
-																												;																																			;																																		;
+    																																																										.SetParent<OFSwitch13Controller> ()
+																																																											.SetGroupName ("OFSwitch13")
+																																																											.AddConstructor<QosController> ()
+																																																											.AddAttribute ("EnableMeter",
+																																																													"Enable per-flow mettering.",
+																																																													BooleanValue (false),
+																																																													MakeBooleanAccessor (&QosController::m_meterEnable),
+																																																													MakeBooleanChecker ())
+																																																													.AddAttribute ("MeterRate",
+																																																															"Per-flow meter rate.",
+																																																															DataRateValue (DataRate ("256Kbps")),
+																																																															MakeDataRateAccessor (&QosController::m_meterRate),
+																																																															MakeDataRateChecker ())
+																																																															.AddAttribute ("LinkAggregation",
+																																																																	"Enable link aggregation.",
+																																																																	BooleanValue (true),
+																																																																	MakeBooleanAccessor (&QosController::m_linkAggregation),
+																																																																	MakeBooleanChecker ())
+																																																																	.AddAttribute ("ServerIpAddr",
+																																																																			"Server IPv4 address.",
+																																																																			AddressValue (Address (Ipv4Address ("10.1.1.1"))),
+																																																																			MakeAddressAccessor (&QosController::m_serverIpAddress),
+																																																																			MakeAddressChecker ())
+																																																																			.AddAttribute ("ServerTcpPort",
+																																																																					"Server TCP port.",
+																																																																					UintegerValue (9),
+																																																																					MakeUintegerAccessor (&QosController::m_serverTcpPort),
+																																																																					MakeUintegerChecker<uint64_t> ())
+																																																																					.AddAttribute ("ServerMacAddr",
+																																																																							"Server MAC address.",
+																																																																							AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
+																																																																							MakeAddressAccessor (&QosController::m_serverMacAddress),
+																																																																							MakeAddressChecker ())
+																																																																							;
 	return tid;
 }
 
@@ -91,6 +98,104 @@ QosController::SetWeight(std::string weight){
 	InputWeight = weight;
 }
 
+void
+QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
+{
+	NS_LOG_FUNCTION (this << swtch);
+	std::cout<<"Vediamo "<< swtch->GetDpId() <<std::endl;
+	/*
+	if(swtch->GetDpId()==1){
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
+	}
+	if(swtch->GetDpId()==4){
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=3");
+	}
+	 */
+	//if(swtch->GetDpId()==1){
+	//DpctlExecute(swtch,"meter-mod cmd=add,flags=1,meter=1 drop:rate=1000");//lo1...dscp_remark:rate=10,prec_level=8
+	//}
+	//DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=8 apply:output=2");
+
+
+	/*TEST METER TABLE*/
+
+	if(swtch->GetDpId()==1){
+		DpctlExecute(swtch,"stats-meter 1");
+		DpctlExecute(swtch,"meter-features");
+		DpctlExecute(swtch,"meter-config 1");
+		/*
+		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=10000");//,burst=20000 e dscp_remark:rate=1000,prec_level=1 --> 100Mbits = 100000 bit/s
+		DpctlExecute(swtch,"meter-mod cmd=add,meter=2,flags=1 drop:rate=10000");
+
+		struct ofl_meter_band_dscp_remark* meterModBands = (ofl_meter_band_dscp_remark*)xmalloc(sizeof(ofl_meter_band_dscp_remark));
+		meterModBands->type=OFPMBT_DSCP_REMARK;
+		meterModBands->rate=10000;
+		meterModBands->prec_level=(-14);
+
+
+
+		struct ofl_msg_meter_mod meterMod;
+		meterMod.header.type=OFPT_METER_MOD;
+		meterMod.command=OFPMC_ADD;
+		meterMod.flags=OFPMF_KBPS; // impone kbps
+		meterMod.meter_id=3;
+		meterMod.bands=(ofl_meter_band_header**)&meterModBands;
+		meterMod.meter_bands_num=1;
+
+		SendToSwitch (swtch, (struct ofl_msg_header*)&meterMod, GetNextXid());
+		 */
+		/*FUNZIONANTE*/
+		/*
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:set_field=ip_dscp:4,output=1");//set_field=ip_dscp:32,
+		 */
+		/*FINE FUNZIONANTE*/
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
+
+	}
+	if(swtch->GetDpId()==3){
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=3");
+	}
+	if(swtch->GetDpId()==4){
+		/*PROVA FUNZIONANTE FLOW-SLICING-INTRASWITCH*/
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:set_field=ip_dscp:4 goto:1");
+		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=1000,prec_level=1");
+		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 meter:1 goto:2");
+		DpctlExecute(swtch,"flow-mod table=2,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=4 apply:output=2");
+		DpctlExecute(swtch,"flow-mod table=2,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=6 apply:output=3");
+		/*FINE PROVA*/
+		/*FUNZIONANTE*/
+		/*
+		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=1000,prec_level=1");
+		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 meter:1 goto:1");
+		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=4 apply:output=2");
+		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=6 apply:output=3");
+		 */
+		/*FINE FUNZIONANTE*/
+	}
+
+	/*FINE TEST METER TABLE*/
+
+	ConfigureBorderSwitch_FUB(swtch);
+	SendBarrierRequest (swtch); //Per tentare di fargli eseguire tutti i comandi ricevuti prima di questo e poi gli altri, ma non funziona
+
+
+
+	if(!ExistSwitchEntry(swtch->GetDpId())){
+		/*In caso un nuovo switch si collega al controller, il grafo che rappresenta la rete diventa obsoleto
+		 *Vanno quindi resi nulli il grafo e la matrice dei cammini
+		 *Rifatta l'esplorazione, rifatto il blocco delle porte della rete, e rigenerata la matrice dei cammini
+		 */
+		std::cout<<"Conosciuto: "<< swtch->GetDpId() <<std::endl;
+
+		SaveSwitchEntry(swtch->GetDpId(),swtch);
+		nSwitch++;
+
+		firstNetworkExplorer=1;
+		NetworkExplorerFunction();
+	}
+}
+
+
 ofl_err
 QosController::HandlePacketIn (
 		struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
@@ -98,6 +203,7 @@ QosController::HandlePacketIn (
 {
 	NS_LOG_FUNCTION (this << swtch << xid);
 
+	//std::cout << "inzio gestione packet in" << std::endl;
 	char *msgStr =
 			ofl_structs_match_to_string ((struct ofl_match_header*)msg->match, 0);
 	NS_LOG_DEBUG ("Packet in match: " << msgStr);
@@ -106,148 +212,78 @@ QosController::HandlePacketIn (
 	if (msg->reason == OFPR_ACTION)
 	{
 		// Get Ethernet frame type
-		uint16_t ethType;
-		struct ofl_match_tlv *tlv;
-		tlv = oxm_match_lookup (OXM_OF_ETH_TYPE, (struct ofl_match*)msg->match);
-		memcpy (&ethType, tlv->value, OXM_LENGTH (OXM_OF_ETH_TYPE));
+		uint16_t ethType = ExtractEthernetType((struct ofl_match*)msg->match);
 
 		if (ethType == ArpL3Protocol::PROT_NUMBER)
 		{
-			// ARP packet
-			return HandleArpPacketIn (msg, swtch, xid);
+
+			if(firstNetworkExplorer==1){ //only the first packet-in enable the exploring
+				std::cout<<"Prima esplorazione"<<std::endl;
+				NetworkExplorerFunction();
+				firstNetworkExplorer=2;
+			}else if(firstNetworkExplorer==2){
+				networkGrafe = GrafeGeneration(nSwitch);
+				networkMatrixPath = floydWarshall(networkGrafe,nSwitch);
+				firstNetworkExplorer = 0;
+			}else{
+				return HandleArpPacketIn (msg, swtch, xid);
+			}
 		}
 		else if (ethType == Ipv4L3Protocol::PROT_NUMBER)
 		{
-			// Must be a TCP packet for connection request
-			return HandleConnectionRequest (msg, swtch, xid);
+			//std::cout << "è un pacchetto Ipv4L3Protocol" << std::endl;
+
+			uint8_t ipProtocolId = ExtractIpProtocolID((struct ofl_match*)msg->match);
+			//std::cout<<"id_protcol: "<< id_protocol<<std::endl;
+
+			if(ipProtocolId == UdpL4Protocol::PROT_NUMBER){ //Sarà un pacchetto udp
+				std::cout<<"UDP!!!!!"<<std::endl;
+
+				uint16_t udp_dst_port= ExtractUdpPort(OXM_OF_UDP_DST,(struct ofl_match*)msg->match);;
+
+				if(udp_dst_port == networkExplorerUdpPort){ //è un pacchetto di esplorazione di rete
+					uint16_t udp_src_port = ExtractUdpPort(OXM_OF_UDP_SRC,(struct ofl_match*)msg->match);
+					uint32_t inPort = ExtractInPort((struct ofl_match*)msg->match);
+
+					std::cout<< "pacchetto explorer UDP da: "<< udp_src_port - networkExplorerUdpPort << " in port: "<< inPort << " dello switch: "<< swtch->GetDpId()<< std::endl;
+
+					uint64_t fromSwitch = swtch->GetDpId();
+					uint64_t toSwitch = udp_src_port - networkExplorerUdpPort;
+					uint32_t portUseInFrom = inPort;
+
+					SavePortForwardEntry(fromSwitch,toSwitch,portUseInFrom);
+					portSwitchConfiguration(fromSwitch,portUseInFrom);
+				}else{
+					//Gestisci altri pacchetti udp
+					std::cout<< "pacchetto generico UDP (NON EXPLORER)" << std::endl;
+				}
+			}else if(ipProtocolId == TcpL4Protocol::PROT_NUMBER){
+				return HandleConnectionRequest (msg, swtch, xid);
+			}
+		}
+		else
+		{
+			std::cout<< "altro tipo di pacchetto" << std::endl;
 		}
 	}
-
-
 
 	// All handlers must free the message when everything is ok
 	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
 	return 0;
 }
 
-void
-QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
-{
-	NS_LOG_FUNCTION (this << swtch);
 
-	// This function is called after a successfully handshake between controller
-	// and each switch. Let's check the switch for proper configuration.
-	if (swtch->GetDpId () == 1)
-	{
-		ConfigureBorderSwitch_FUB (swtch);
-		//attivo la possibilità di un flusso UDP da Switch1 a Switch2 per il test
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
-	}
-	else if (swtch->GetDpId () == 2)
-	{
-		ConfigureBorderSwitch_FUB (swtch);
-	}
-
-	portSwitchConfiguration(swtch,1);
-
-}
-
-void
-QosController::portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint64_t port){
-
-	struct ofl_msg_port_mod pkt;
-	pkt.header.type=OFPT_PORT_MOD;
-	pkt.port_no=port;
-	pkt.config=OFPPC_NO_FWD;
-	pkt.mask=OFPPC_NO_FWD;
-	//pkt.advertise=OFPPS_BLOCKED;
-
-	std::cout << "inviato il blocco" << std::endl;
-
-	SendToSwitch (swtch, (struct ofl_msg_header*)&pkt, GetNextXid());
-}
 
 void
 QosController::ConfigureBorderSwitch (Ptr<const RemoteSwitch> swtch)
 {
 	NS_LOG_FUNCTION (this << swtch);
-
-	// For packet-in messages, send only the first 128 bytes to the controller
-	DpctlExecute (swtch, "set-config miss=128");
-
-	// Redirect ARP requests to the controller
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-			"eth_type=0x0806,arp_op=1 apply:output=ctrl");
-
-	// Using group #3 for rewriting headers and forwarding packets to clients
-	if (m_linkAggregation)
-	{
-		// Configure Group #3 for aggregating links 1 and 2
-		DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=3 "
-				"weight=1,port=any,group=any set_field=ip_src:10.1.1.1"
-				",set_field=eth_src:00:00:00:00:00:01,output=1 "
-				"weight=1,port=any,group=any set_field=ip_src:10.1.1.1"
-				",set_field=eth_src:00:00:00:00:00:01,output=2");
-	}
-	else
-	{
-		// Configure Group #3 for sending packets only over link 1
-		DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=3 "
-				"weight=0,port=any,group=any set_field=ip_src:10.1.1.1"
-				",set_field=eth_src:00:00:00:00:00:01,output=1");
-	}
-
-	// Groups #1 and #2 send traffic to internal servers (ports 3 and 4)
-	DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
-			"weight=0,port=any,group=any set_field=ip_dst:10.1.1.2,"
-			"set_field=eth_dst:00:00:00:00:00:08,output=3");
-	DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
-			"weight=0,port=any,group=any set_field=ip_dst:10.1.1.3,"
-			"set_field=eth_dst:00:00:00:00:00:0a,output=4");
-
-	// Incoming TCP connections (ports 1 and 2) are sent to the controller
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-			"in_port=1,eth_type=0x0800,ip_proto=6,ip_dst=10.1.1.1,"
-			"eth_dst=00:00:00:00:00:01 apply:output=ctrl");
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-			"in_port=2,eth_type=0x0800,ip_proto=6,ip_dst=10.1.1.1,"
-			"eth_dst=00:00:00:00:00:01 apply:output=ctrl");
-
-	// TCP packets from servers are sent to the external network through group 3
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
-			"in_port=3,eth_type=0x0800,ip_proto=6 apply:group=3");
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
-			"in_port=4,eth_type=0x0800,ip_proto=6 apply:group=3");
 }
 
 void
 QosController::ConfigureAggregationSwitch (Ptr<const RemoteSwitch> swtch)
 {
 	NS_LOG_FUNCTION (this << swtch);
-
-	if (m_linkAggregation)
-	{
-		// Configure Group #1 for aggregating links 1 and 2
-		DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
-				"weight=1,port=any,group=any output=1 "
-				"weight=1,port=any,group=any output=2");
-	}
-	else
-	{
-		// Configure Group #1 for sending packets only over link 1
-		DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
-				"weight=0,port=any,group=any output=1");
-	}
-
-	// Packets from input ports 1 and 2 are redirecte to port 3
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-			"in_port=1 write:output=3");
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-			"in_port=2 write:output=3");
-
-	// Packets from input port 3 are redirected to group 1
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-			"in_port=3 write:group=1");
 }
 
 void
@@ -257,10 +293,10 @@ QosController::ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 	NS_LOG_FUNCTION (this << swtch);
 
 	// For packet-in messages, send only the first 128 bytes to the controller
-	//DpctlExecute (swtch, "set-config miss=128");
+	DpctlExecute (swtch, "set-config miss=128");
 	/*----------------------------------------------------------------------*/
 	//CONCENTRATI QUI
-	std::cout << "Provo ad impostare la regola" << std::endl;
+	//std::cout << "Provo ad impostare la regola" << std::endl;
 
 	// Redirect ARP requests to the controller
 	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
@@ -270,138 +306,23 @@ QosController::ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
 			"eth_type=0x0806,arp_op=2 apply:output=ctrl");
 
+	//Network explorer packet redirect
+	DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=20 "
+			"eth_type=0x0800,ip_proto=17,udp_dst=11000 apply:output=ctrl");
 
-	/*
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1 apply:output=ctrl");//,arp_tha=00:00:00:00:00:01,arp_tpa=10.1.1.1,
-
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-			"eth_type=0x0806,arp_op=2,arp_tha=00:00:00:00:00:01 apply:output=ctrl");
-	 */
-	/*
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-				"eth_type=0x0806,in_port=ctrl,arp_op=1 apply:output=1,output=2,output=3,output=4");
-	 */
-	/*
-	DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 " //imposta una regola di flusso, e aggiungila alla tabella 1 con priorità 20
-			"eth_type=0x0806,arp_op=2,arp_tpa=10.1.1.1,arp_tha=00:00:00:00:00:01, apply:output=ctrl"); //tipo di frame ethernet, arp_operazione = Arp_Reply
-	//match=oxm{arp_op="0x1", arp_spa="192.168.0.1", arp_tha="00:00:00:00:00:02", arp_sha="00:00:00:00:00:01", arp_tpa="192.168.0.2", eth_type="0x806"}, insts=[apply{acts=[out{port="3"}]}]}
-	 */
-	std::cout << "Regola Impostata" << std::endl;
-
-	/*----------------------------------------------------------------------*/
-	//DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-	//              "eth_type=0x0806,arp_op=1 apply:output=3,output=4");
-
-
-	/*
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-                "eth_type=0x0806,arp_op=1 write:group=5");
-  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=5 "
-                "weight=1,port=any,group=any output=3 "
-                "weight=1,port=any,group=any output=4");
-	 */
-	/*
-  //Configure Group #3 for aggregating links 1 and 2
-  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=3 "
-                "weight=1,port=any,group=any output=1 "
-                "weight=1,port=any,group=any output=2");
-  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=4 "
-                "weight=0,port=any,group=any output=2");
-
-  // Groups #1 and #2 send traffic to internal servers (ports 3 and 4)
-  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
-                "weight=0,port=any,group=any output=3");
-  DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
-                "weight=0,port=any,group=any output=4");
-
-
-  // Packets from input port 1 and 10.1.1.1 are redirected to group 1
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-		  	  "in_port=1,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1 write:group=1");
-  //                "in_port=1,ip_src=10.1.2.1 write:group=1");
-
-  // Packets from input port 2 and 10.1.1.1 are redirected to group 1
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=2,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1 write:group=1");
-//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-//                "in_port=2,eth_type=0x0800,ip_proto=6,ip_src=10.1.2.1 write:group=1");
-
-  // Packets from input port 2 and 10.1.1.2 are redirected to group 2
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=2,eth_type=0x0800,ip_proto=17,ip_src=10.1.2.2 write:group=2");
-//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-//                "in_port=2,eth_type=0x0800,ip_proto=6,ip_src=10.1.2.2 write:group=2");
-
-  //da rivedere**********************************************************
-
-  // TCP packets from servers are sent to the external network through group 3
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
-                "in_port=3 apply:group=3");
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=700 "
-                "in_port=4 apply:group=4");
-	 */
+	DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=1 "
+			"eth_type=0x0800 apply:output=ctrl");
+	//std::cout << "Regola Impostata" << std::endl;
 }
+
 
 
 void
 QosController::ConfigureAggregationSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 {
 	NS_LOG_FUNCTION (this << swtch);
-	std::cout << "configureAggregationSwitch_FUB" << std::endl;
-	/*
-  if (m_linkAggregation)
-    {
-      // Configure Group #1 for aggregating links 1 and 2
-//      DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
-//                    "weight=" <<InputWeight <<",port=any,group=any output=1 "
-//                    "weight=1,port=any,group=any output=2");
-      DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=1 "
-                    "weight=1,port=any,group=any output=1 "
-                    "weight=1,port=any,group=any output=2");
-      DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=2 "
-                    "weight=0,port=any,group=any output=2");
-    }
-  else
-    {
-      // Configure Group #1 for sending packets only over link 1
-      DpctlExecute (swtch, "group-mod cmd=add,type=ind,group=1 "
-                    "weight=0,port=any,group=any output=1");
-    }
 
-  // Packets from input ports 1 and 2, and direct to 10.1.2.1 are redirecte to port 3
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=1,ip_dst=10.1.2.1 write:output=3");
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=2,ip_dst=10.1.2.1 write:output=3");
-
-  // Packets from input ports 2 are redirecte to port 4
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=2 write:output=4");
-
-  // Packets from input port 3 are redirected to group 1
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=3 write:group=1");
-
-  // Packets from input port 4 are redirected to group 2
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=500 "
-                "in_port=4 write:group=2");
-
-  // Redirect ARP requests to the controller
-//  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-//                "eth_type=0x0806,arp_op=1 apply:output=ctrl");
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-                "eth_type=0x0806,arp_op=2 apply:output=3,output=4");
-
-
-  DpctlExecute (swtch, "flow-mod cmd=add,table=0,prio=20 "
-                "eth_type=0x0806,arp_op=2 apply:group=5");
-  DpctlExecute (swtch, "group-mod cmd=add,type=sel,group=5 "
-                "weight=0,port=any,group=any output=3 "
-                "weight=0,port=any,group=any output=4");
-	 */
 }
-
 
 ofl_err
 QosController::HandleArpPacketIn (
@@ -409,22 +330,16 @@ QosController::HandleArpPacketIn (
 		uint32_t xid)
 {
 	NS_LOG_FUNCTION (this << swtch << xid);
-	std::cout << "HandlerArpPacket" << std::endl;
+	//std::cout << "HandlerArpPacket" << std::endl;
 
 	Ipv4Address serverIp = Ipv4Address::ConvertFrom (m_serverIpAddress);
 	Mac48Address serverMac = Mac48Address::ConvertFrom (m_serverMacAddress);
 
-	struct ofl_match_tlv *tlv;
-
 	// Get ARP operation
-	uint16_t arpOp;
-	tlv = oxm_match_lookup (OXM_OF_ARP_OP, (struct ofl_match*)msg->match);
-	memcpy (&arpOp, tlv->value, OXM_LENGTH (OXM_OF_ARP_OP));
+	uint16_t arpOp = ExtractArpOperationCode((struct ofl_match*)msg->match);
 
 	// Get input port
-	uint32_t inPort;
-	tlv = oxm_match_lookup (OXM_OF_IN_PORT, (struct ofl_match*)msg->match);
-	memcpy (&inPort, tlv->value, OXM_LENGTH (OXM_OF_IN_PORT));
+	uint32_t inPort = ExtractInPort((struct ofl_match*)msg->match);
 
 	// Get source and target IP address
 	Ipv4Address srcIp, dstIp;
@@ -432,44 +347,43 @@ QosController::HandleArpPacketIn (
 	dstIp = ExtractIpv4Address (OXM_OF_ARP_TPA, (struct ofl_match*)msg->match);
 
 	// Get Source MAC address
-	Mac48Address srcMac;// dstMac;
-	tlv = oxm_match_lookup (OXM_OF_ARP_SHA, (struct ofl_match*)msg->match);
-	srcMac.CopyFrom (tlv->value);
-	//tlv = oxm_match_lookup (OXM_OF_ARP_THA, (struct ofl_match*)msg->match);
-	//dstMac.CopyFrom (tlv->value);
-
-	/*ArpRequest arrivata da*/
-	std::cout << "IpSorgente:"<<srcIp<< " MacSorgente:"<<srcMac<< " PortaSorgente:"<< inPort << " TipoRichiesta:" << arpOp <<std::endl;
-
+	Mac48Address srcMac = ExtractMacAddress(OXM_OF_ARP_SHA,(struct ofl_match*)msg->match);
 	//Save, if not exist already, ArpEntry
 	SaveArpEntry(srcIp,srcMac);
 
-	//Generate ad IP based flow to the new entry
+	//Save, if not exist already, IpDestEntry
+	SaveIpDestEntry(srcIp,swtch->GetDpId());
+
+	//Generate ad IP based flow to the new entry, to redirect the destination traffic
 	std::ostringstream flowDest;
-			flowDest << "flow-mod table=0,cmd=add eth_type=0x800,ip_dst="<<srcIp<<" apply:output="<<inPort;
+	flowDest << "flow-mod table=0,cmd=add eth_type=0x800,ip_dst="<<srcIp<<" apply:output="<<inPort;
 	DpctlExecute(swtch,flowDest.str());
 
 	// Check for ARP request
 	if (arpOp == ArpHeader::ARP_TYPE_REQUEST)
 	{
-
 		uint8_t replyData[64];
-		if(ExistArpEntry(dstIp)){
-			std::cout << "ArpEntry Trovata, quanto è bella" <<std::endl;
+
+		if(ExistArpEntry(dstIp)){// In caso di ArpEntry presente, mi è stato chiesto il MAC di un host che conosco
+			/*
+			uint64_t srcSwitchDpId, dstSwitchDpId;
+			srcSwitchDpId = swtch->GetDpId();
+			dstSwitchDpId = GetIpDestEntry(dstIp);
+			std::list<int> path = extractPath(networkMatrixPath,nSwitch,srcSwitchDpId,dstSwitchDpId);
+			showElementList(path);
+			setFlowModToPathSwitch(path,srcIp,dstIp);
+			 */
 			Mac48Address dstMac = GetArpEntry(dstIp);
 			Ptr<Packet> pkt = CreateArpReply(dstMac,dstIp,srcMac,srcIp);
 			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
 			pkt->CopyData(replyData,64);
 
-			// Response to the ArpRequest sender the info request
 			struct ofl_action_output *action =
 					(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
 
 			this->shortActionOuputCreator(action, OFPP_IN_PORT, 0);//rimandalo alla porta di provenienza del messaggio che non hai saputo gestire
 
-			// Send the ARP Reply within an OpenFlow PacketOut message
 			struct ofl_msg_packet_out reply;
-
 			reply.header.type = OFPT_PACKET_OUT;
 			reply.buffer_id = OFP_NO_BUFFER;
 			reply.in_port = inPort;
@@ -478,65 +392,25 @@ QosController::HandleArpPacketIn (
 			reply.actions_num = 1;
 			reply.actions = (struct ofl_action_header**)&action;
 
-			//this->shortPacketOutCreator(&reply, OFP_NO_BUFFER ,replyData,64,inPort,action,1);
-
 			SendToSwitch (swtch, (struct ofl_msg_header*)&reply, xid);
 			free (action);
 
-		}else{
-			std::cout << "ArpEntry NON trovata, vado in ricerca" <<std::endl;
+		}else{//In caso di ArpEntry non trovata, ossia, mi è stato chiesto il MAC di un host che non conosco
+			//std::cout << "ArpEntry NON trovata, vado in ricerca" <<std::endl;
 
 			Ptr<Packet> pkt = CreateArpRequest(serverMac, serverIp, dstIp);
 			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
 			pkt->CopyData(replyData,64);//copia pkt in replydata che ha una lunghezza di 64 byte
 
-			uint64_t j=1;//Parto da 1 perchè è da 1 che inizia la nomenclatura degli switch
-			Ptr<const RemoteSwitch> rSwitch = GetRemoteSwitch(j);
-			while(rSwitch!=0){
-				std::cout << "rSwitch:"<<rSwitch<<std::endl;
-				/*
-				// Send to every port of the switch from 2 to nPort
-				uint32_t nPortHostRSwitch = 2;
-				uint32_t nPortHostMaxRSwith = 3;// il metodo ha una falla, se anche solo una action da errore, le altre NON vengono effettuate
-				struct ofl_action_output * multyAction[nPortHostMaxRSwith-nPortHostRSwitch];
+			DpIdRemoteSwitch_t::iterator itr;
+			for(itr = m_dpIdTable.begin(); itr != m_dpIdTable.end(); ++itr){
 
-				uint32_t numberOfActions = 0;
-
-
-				for(uint32_t i=nPortHostRSwitch;i<=nPortHostMaxRSwith;i++){
-					std::cout << "rSwitch:"<<rSwitch<< "rSwitchPort:"<<i<<std::endl;
-
-					multyAction[numberOfActions] = (struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
-
-					this->shortActionOuputCreator(multyAction[numberOfActions], i, 0);
-
-					numberOfActions++;
-				}
-
-
-				// Send the ARP Request within an OpenFlow PacketOut message
-				struct ofl_msg_packet_out reply;
-
-				reply.header.type = OFPT_PACKET_OUT;
-				reply.buffer_id = OFP_NO_BUFFER;
-				reply.in_port = OFPP_ANY;
-				reply.data_length = 64;
-				reply.data = &replyData[0];
-				reply.actions = (struct ofl_action_header**)&multyAction[0];
-				reply.actions_num = numberOfActions;
-
-				std::cout<< "indirizzo replyData[0]: "<< &replyData <<std::endl;
-				 */
-
-				// Prova della tipologia di porte per mandare i pacchetti
 				struct ofl_action_output *action =
 						(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
-
-				this->shortActionOuputCreator(action, OFPP_FLOOD, 0); //lo invierà a tutte le porte non di rete?
+				this->shortActionOuputCreator(action, OFPP_FLOOD, 0);
 
 				// Send the ARP Reply within an OpenFlow PacketOut message
 				struct ofl_msg_packet_out reply;
-
 				reply.header.type = OFPT_PACKET_OUT;
 				reply.buffer_id = OFP_NO_BUFFER;
 				reply.in_port = OFPP_CONTROLLER;//da chi proviene il messaggio packet_out
@@ -545,43 +419,16 @@ QosController::HandleArpPacketIn (
 				reply.actions_num = 1;
 				reply.actions = (struct ofl_action_header**)&action;
 
-
-				/*Qualche problematica da risolvere qui*/
-				//reply = this->shortPacketOutCreator(OFP_NO_BUFFER , replyData, 64, OFPP_ANY, multyAction[0], numberOfActions);
-				SendToSwitch(rSwitch, (struct ofl_msg_header*)&reply, xid);
-				j++;
-				rSwitch = GetRemoteSwitch(j);
+				SendToSwitch(itr->second, (struct ofl_msg_header*)&reply, xid);
 			}
 		}
 	}else{
-		std::cout<<"Ho ricevuto un reply"<<std::endl;
+		//std::cout<<"Ho ricevuto un reply"<<std::endl;
 	}
 	// All handlers must free the message when everything is ok
 	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	//std::cout<< "fine gestione arp packet" << std::endl;
 	return 0;
-}
-
-
-ofl_msg_packet_out
-QosController::shortPacketOutCreator(uint32_t bufferIdDatapathType, uint8_t * firstElementOfPayload,size_t payloadLength, uint32_t controllerOutPortToSend, struct ofl_action_output *pointerAtTheFirstAction, uint32_t numberOfTotalAction){
-	struct ofl_msg_packet_out pkt;
-	pkt.header.type = OFPT_PACKET_OUT;
-	pkt.buffer_id = bufferIdDatapathType;//OFP_NO_BUFFER, every
-	pkt.in_port = controllerOutPortToSend;
-	pkt.data = firstElementOfPayload; //I dati iniziano da questo indirizzo
-	std::cout<< "indirizzo firstElementOfPayload: "<< firstElementOfPayload <<std::endl;
-	pkt.data_length = payloadLength; //successivi n indirizzi che contengono il payload
-	pkt.actions = (struct ofl_action_header**)&pointerAtTheFirstAction; //Cosa farne del payload, quando il pkt_out arriva allo switch
-	pkt.actions_num = numberOfTotalAction; //FORSE, numero di azioni scritte in action
-	return pkt;
-}
-
-void
-QosController::shortActionOuputCreator(struct ofl_action_output* action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta){
-	//action = (struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
-	action->header.type = OFPAT_OUTPUT;
-	action->port = outputSwitchPort;
-	action->max_len = lunghezzaMassimaDellaRisposta;
 }
 
 ofl_err
@@ -599,14 +446,10 @@ QosController::HandleConnectionRequest (
 	Mac48Address serverMac = Mac48Address::ConvertFrom (m_serverMacAddress);
 
 	// Get input port
-	uint32_t inPort;
-	tlv = oxm_match_lookup (OXM_OF_IN_PORT, (struct ofl_match*)msg->match);
-	memcpy (&inPort, tlv->value, OXM_LENGTH (OXM_OF_IN_PORT));
+	uint32_t inPort = ExtractInPort((struct ofl_match*)msg->match);
 
 	// Get Source MAC address
-	Mac48Address srcMac;
-	tlv = oxm_match_lookup (OXM_OF_ETH_SRC, (struct ofl_match*)msg->match);
-	srcMac.CopyFrom (tlv->value);
+	Mac48Address srcMac = ExtractMacAddress(OXM_OF_ETH_SRC,(struct ofl_match*)msg->match);
 
 	// Get source and destination IP address
 	Ipv4Address srcIp, dstIp;
@@ -707,7 +550,257 @@ QosController::HandleConnectionRequest (
 	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
 	return 0;
 }
+/***************************************************************************/
 
+void
+QosController::NetworkExplorerFunction(){
+	std::cout<<"NetworkExplorerFunction"<<std::endl;
+	DpIdRemoteSwitch_t::iterator itr;
+	for (itr = m_dpIdTable.begin(); itr != m_dpIdTable.end(); ++itr){
+		std::cout<<"Per: "<< itr->second->GetDpId()<< std::endl;
+		switchNetworkExplore(itr->second);
+	}
+}
+
+void
+QosController::switchNetworkExplore(Ptr<const RemoteSwitch> swtch){
+
+	//std::cout<< "Inizio Network Explorer"<< std::endl;
+	uint8_t pktExplorer[64];
+
+	Ptr<Packet> pkt = CreateUdpExplorerPacket(swtch->GetDpId());
+
+	pkt->CopyData(pktExplorer,64);
+
+	struct ofl_action_output *action =
+			(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
+
+	shortActionOuputCreator(action, OFPP_FLOOD ,0);
+
+	struct ofl_msg_packet_out explorer;
+	explorer.header.type=OFPT_PACKET_OUT;
+	explorer.buffer_id=OFP_NO_BUFFER;
+	explorer.in_port=OFPP_CONTROLLER;
+	explorer.actions=(struct ofl_action_header**)&action;
+	explorer.actions_num=1;
+	explorer.data=&pktExplorer[0];
+	explorer.data_length=64;
+
+	SendToSwitch(swtch,(struct ofl_msg_header*)&explorer,GetNextXid());
+}
+
+
+Ptr<Packet>
+QosController::CreateUdpExplorerPacket(uint64_t fromSwitchId){
+	//Ipv4Address serverIp = Ipv4Address::ConvertFrom (m_serverIpAddress);
+	//Mac48Address serverMac = Mac48Address::ConvertFrom (m_serverMacAddress);
+
+	//std::cout<< "Creo packetto UDP"<< std::endl;
+	//uint8_t * hello;
+	//uint8_t fromSwitchIdData = (uint8_t)fromSwitchId;
+	//uint32_t helloSize=24;
+	//hello = (uint8_t*)calloc(helloSize,sizeof(uint8_t));
+	//uint8_t  hello[24] = "ciao";
+
+	//reinterpret_cast<const uint8_t*> ("hello"), 5
+	//Ptr<Packet> pktU = Create<Packet>(hello,helloSize);
+	Ptr<Packet> pktU = Create<Packet>();
+
+	UdpHeader udpH;
+	udpH.SetSourcePort(networkExplorerUdpPort+fromSwitchId);
+	udpH.SetDestinationPort(networkExplorerUdpPort);
+	udpH.EnableChecksums();
+	Ipv4Address src="10.1.1.1";
+	Ipv4Address dst="10.1.1.1";
+	udpH.InitializeChecksum(src,dst,UdpL4Protocol::PROT_NUMBER);
+	Buffer buffer;
+	//buffer.Serialize(hello,helloSize);
+
+	pktU->AddHeader(udpH);
+
+	Ipv4Header ipv4H;
+	ipv4H.SetSource("10.1.1.1");
+	ipv4H.SetDestination("10.1.1.1");
+	ipv4H.SetTtl(64);
+	ipv4H.SetDontFragment();
+	ipv4H.SetProtocol(UdpL4Protocol::PROT_NUMBER);
+	ipv4H.SetPayloadSize(UdpL4Protocol::PROT_NUMBER);
+
+	pktU->AddHeader(ipv4H);
+
+	// Ethernet header
+	EthernetHeader eth (false);
+	eth.SetSource ("00:00:00:90:01:01");
+	eth.SetDestination ("00:00:00:90:02:01");
+	if (pktU->GetSize () < 46)
+	{
+		uint8_t buffer[46];
+		memset (buffer, 0, 46);
+		Ptr<Packet> padd = Create<Packet> (buffer, 46 - pktU->GetSize ());
+		pktU->AddAtEnd (padd);
+	}
+	eth.SetLengthType (Ipv4L3Protocol::PROT_NUMBER);
+	pktU->AddHeader (eth);
+
+	// Ethernet trailer
+	EthernetTrailer trailer;
+	if (Node::ChecksumEnabled ())
+	{
+		trailer.EnableFcs (true);
+	}
+	trailer.CalcFcs (pktU);
+	pktU->AddTrailer (trailer);
+
+	return pktU;
+}
+
+
+void
+QosController::portSwitchConfiguration(uint64_t switchDpId, uint32_t port){
+	portSwitchConfiguration(GetRemoteSwitch(switchDpId),port);
+}
+
+void
+QosController::portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint32_t port){
+
+	struct ofl_msg_port_mod pkt;
+	pkt.header.type=OFPT_PORT_MOD;
+	pkt.port_no=port;
+	pkt.config=OFPPC_NO_FWD;
+	pkt.mask=OFPPC_NO_FWD;
+	//pkt.advertise=;
+
+	std::cout << "inviato il blocco" << std::endl;
+
+	SendToSwitch (swtch, (struct ofl_msg_header*)&pkt, GetNextXid());
+}
+
+/*******************************************/
+
+int **
+QosController::GrafeGeneration(int nSwitch){
+	int** grafe = new int*[nSwitch];
+	for (int i = 0; i < nSwitch; ++i){
+		grafe[i] = new int[nSwitch];
+		for(int j = 0; j < nSwitch; ++j){
+			grafe[i][j]=INF;
+		}
+	}
+	std::cout<<"grafo inizializzato"<<std::endl;
+	PortForwardFromS1ToS2_t::iterator itr;
+	for(itr = m_PortFrowardTable.begin(); itr != m_PortFrowardTable.end(); ++itr){
+		std::cout<<"itr"<<std::endl;
+		grafe[itr->first.first-1][itr->first.second-1]=1;
+	}
+	std::cout<<"grafo scritto"<<std::endl;
+	for(int i=0; i<nSwitch; i++){
+		for(int j=0; j<nSwitch; j++){
+			std::cout<<grafe[i][j]<<" ";
+		}
+		std::cout<<std::endl;
+	}
+	std::cout<<"grafo stampato"<<std::endl;
+	return grafe;
+}
+
+/*****************************************************/
+void printSolution(int** pred, const int V)
+{
+	std::cout<<"The following matrix shows the path"
+			" between every pair of vertices "<<std::endl;
+	for (int i = 0; i < V; i++)
+	{
+		for (int j = 0; j < V; j++)
+		{
+			if (pred[i][j] == INF)
+				std::cout<<"INF"<<"     ";
+			else
+				std::cout<<pred[i][j]<<"     ";
+		}
+		std::cout<<std::endl;
+	}
+}
+
+int **
+QosController::floydWarshall (int** graph, const int V)
+{
+
+	int i, j, k;
+
+	int** dist = new int*[V];
+	int** next = new int*[V];
+	for (int i = 0; i < V; ++i){
+		dist[i] = new int[V];
+		next[i] = new int[V];
+		for(int j = 0; j < V; ++j){
+			dist[i][j]=0;
+			next[i][j]=0;
+		}
+	}
+	for (i = 0; i < V; i++){
+		for (j = 0; j < V; j++){
+			dist[i][j] = graph[i][j];
+			next[i][j] = j;
+		}
+	}
+	for(i = 0; i< V; i++){
+		dist[i][i]=0;
+		next[i][i]=i;
+	}
+	for (k = 0; k < V; k++)
+	{
+		for (i = 0; i < V; i++)
+		{
+			for (j = 0; j < V; j++)
+			{
+				if (dist[i][j] > dist[i][k] + dist[k][j]){
+					dist[i][j] = dist[i][k] + dist[k][j];
+					next[i][j] = next[i][k];
+				}
+			}
+		}
+	}
+	printSolution(next, V);
+	return next;
+}
+
+
+
+std::list<int>
+QosController::extractPath(int ** graph, const int V, Ptr<const RemoteSwitch> fromSwtch, Ptr<const RemoteSwitch> toSwtch){
+	return extractPath(graph,V,fromSwtch->GetDpId(),toSwtch->GetDpId());
+}
+
+std::list<int>
+QosController::extractPath(int ** graph, const int V, int from, int to){
+	from--;
+	to--;
+	std::list<int> pathList;
+	std::list<int>::iterator it;
+	it = pathList.begin();
+
+	std::cout<<"Cammino: "<<from<<std::endl;
+
+	std::cout<<"Nodo: "<<from+1<<std::endl;
+	pathList.insert(it,from+1);
+	while(from!=to){
+		std::cout<<"Nodo: "<< graph[from][to]+1<<std::endl;
+		pathList.insert(it,graph[from][to]+1);
+		from=graph[from][to];
+	}
+	return pathList;
+}
+
+void
+QosController::showElementList(std::list<int> list){
+	std::cout<<"showElementList"<<std::endl;
+	std::list<int>::iterator it;
+	for(it = list.begin(); it!=list.end(); ++it){
+		std::cout<<" elemContain: "<< *it<< std::endl;
+	}
+}
+
+/*****************************************************/
 Ipv4Address
 QosController::ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match)
 {
@@ -728,13 +821,79 @@ QosController::ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match)
 		NS_ABORT_MSG ("Invalid IP field.");
 	}
 }
+Mac48Address
+QosController::ExtractMacAddress (uint32_t oxm_of, struct ofl_match* match){
+	switch(oxm_of){
+	case OXM_OF_ARP_SHA:
+	case OXM_OF_ARP_SHA_W:
+	case OXM_OF_ARP_THA:
+	case OXM_OF_ARP_THA_W:
+	{
+		Mac48Address Mac;
+		ofl_match_tlv* tlv = oxm_match_lookup (oxm_of, match);
+		Mac.CopyFrom (tlv->value);
+		return Mac;
+	}
+	default:
+		NS_ABORT_MSG ("Invalid MAC field.");
+	}
+
+}
+
+uint16_t
+QosController::ExtractEthernetType (struct ofl_match* match){
+	// Get Ethernet frame type
+	uint16_t ethType; //16 bit perchè così dice OXM_OF_ETH_TYPE
+	struct ofl_match_tlv *tlv = oxm_match_lookup (OXM_OF_ETH_TYPE, match);
+	memcpy (&ethType, tlv->value, OXM_LENGTH (OXM_OF_ETH_TYPE));
+	return ethType;
+}
+
+uint16_t
+QosController::ExtractArpOperationCode(struct ofl_match* match){
+	// Get ARP operation
+	uint16_t arpOp;
+	struct ofl_match_tlv *tlv = oxm_match_lookup (OXM_OF_ARP_OP, match);
+	memcpy (&arpOp, tlv->value, OXM_LENGTH (OXM_OF_ARP_OP));
+	return arpOp;
+}
+
+uint32_t
+QosController::ExtractInPort(struct ofl_match* match){
+	uint32_t inPort;
+	struct ofl_match_tlv *tlv = oxm_match_lookup (OXM_OF_IN_PORT, match);
+	memcpy (&inPort, tlv->value, OXM_LENGTH (OXM_OF_IN_PORT));
+	return inPort;
+}
+
+uint8_t
+QosController::ExtractIpProtocolID(struct ofl_match* match){
+	uint8_t ipProtocolId; //8 bit perchè così dice OXM_OF_IP_PROTO
+	struct ofl_match_tlv *tlv = oxm_match_lookup (OXM_OF_IP_PROTO,match);
+	memcpy (&ipProtocolId, tlv->value, OXM_LENGTH (OXM_OF_IP_PROTO));
+	return ipProtocolId;
+}
+uint16_t
+QosController::ExtractUdpPort( uint32_t oxm_of , struct ofl_match* match){
+	switch(oxm_of){
+	case OXM_OF_UDP_SRC:
+	case OXM_OF_UDP_DST:
+	{
+		uint16_t udp_port; //16 bit perchè così dice OXM_OF_UDP_*
+		struct ofl_match_tlv *tlv = oxm_match_lookup (oxm_of, match);
+		memcpy (&udp_port, tlv->value, OXM_LENGTH (oxm_of));
+		return udp_port;
+	}
+	default:
+		NS_ABORT_MSG ("Invalid UDP field.");
+	}
+}
 
 Ptr<Packet>
 QosController::CreateArpRequest (Mac48Address srcMac, Ipv4Address srcIp,
 		Ipv4Address dstIp)
 {
 	NS_LOG_FUNCTION (this << srcMac << srcIp << dstIp);
-
 
 	Ptr<Packet> packet = Create<Packet> ();
 
@@ -808,6 +967,15 @@ QosController::CreateArpReply (Mac48Address srcMac, Ipv4Address srcIp,
 	return packet;
 }
 
+
+
+void
+QosController::shortActionOuputCreator(struct ofl_action_output* action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta){
+	action->header.type = OFPAT_OUTPUT;
+	action->port = outputSwitchPort;
+	action->max_len = lunghezzaMassimaDellaRisposta;
+}
+
 void
 QosController::SaveArpEntry (Ipv4Address ipAddr, Mac48Address macAddr)
 {
@@ -821,14 +989,8 @@ QosController::SaveArpEntry (Ipv4Address ipAddr, Mac48Address macAddr)
 	}
 }
 
-/*
- * Modificata per non lanciare errori in caso non trovi la ARP entry nella mappa,
- * andava in errore perché era tutto pensato, che un nuovo Host, connettendosi alla rete,
- * necessitando di un ip, doveva passare per un dhcp, che non solo gli dava un ip, ma gli imponeva
- * un triggerArp, per fargli mandare una ARP Request al controller, in modo che il controller potesse
- * memorizzare il MAC associandolo all'Ip nella sua Entry.
- * Io non uso DHCP, e non installo il triggher
- */
+
+
 Mac48Address
 QosController::GetArpEntry (Ipv4Address ip)
 {
@@ -836,19 +998,14 @@ QosController::GetArpEntry (Ipv4Address ip)
 	ret = m_arpTable.find (ip);
 	if (ret != m_arpTable.end ())
 	{
-		std::cout << "MAC associato all' IpDest TROVATO" << std::endl;
+		//std::cout << "MAC associato all' IpDest TROVATO" << std::endl;
 		NS_LOG_INFO ("Found ARP entry: " << ip << " - " << ret->second);
 		return ret->second;
 	}
-	std::cout << "MAC associato all' IpDest NON TROVATO" << std::endl;
 	NS_ABORT_MSG ("No ARP information for this IP.");
 
 }
 
-
-/*
- * Controlla se esiste, nella mappa delle arp entry, una determinata chiave
- */
 bool
 QosController::ExistArpEntry (Ipv4Address ip)
 {
@@ -858,6 +1015,119 @@ QosController::ExistArpEntry (Ipv4Address ip)
 		return true;
 	return false;
 }
+
+int
+QosController::SaveSwitchEntry (uint64_t dpIdSwitch, Ptr<const RemoteSwitch> swtch)
+{
+	std::pair<uint64_t, Ptr<const RemoteSwitch>> entry (dpIdSwitch, swtch);
+	std::pair <DpIdRemoteSwitch_t::iterator, bool> ret;
+	ret = m_dpIdTable.insert (entry);
+	if (ret.second == true)
+	{
+		NS_LOG_INFO ("New SwitchEntry entry: " << dpIdSwitch << " - " << swtch);
+		return 1;
+	}
+	return 0;
+}
+
+bool
+QosController::ExistSwitchEntry (uint64_t swtchDpId)
+{
+	DpIdRemoteSwitch_t::iterator ret;
+	ret = m_dpIdTable.find(swtchDpId);
+	if(ret!=m_dpIdTable.end())
+		return true;
+	return false;
+}
+
+int
+QosController::SavePortForwardEntry (uint64_t from, uint64_t to, uint32_t port)
+{
+	std::pair<uint64_t, uint64_t> entrySwitchId (from, to);
+	std::pair<std::pair<uint64_t, uint64_t>,uint32_t> entryPort (entrySwitchId, port);
+	std::pair <PortForwardFromS1ToS2_t::iterator, bool> ret;
+
+	ret = m_PortFrowardTable.insert (entryPort);
+	if (ret.second == true)
+	{
+		std::cout<<"PortForwardEntry salvata-> "<< " fromSwitch: " <<from << " toSwitch: "<< to << " by port: " << port <<std::endl;
+
+		NS_LOG_INFO ("Nuova Portforward entry-> "<< " fromSwitch: " <<from << " toSwitch: "<< to << " by port: " << port );
+		return 1;
+	}
+	return 0;
+}
+
+uint32_t
+QosController::GetPortForwardEntry (Ptr<const RemoteSwitch> switchFrom, Ptr<const RemoteSwitch> switchTo){
+	return GetPortForwardEntry(switchFrom->GetDpId(),switchTo->GetDpId());
+}
+
+uint32_t
+QosController::GetPortForwardEntry (uint64_t from, uint64_t to)
+{
+	PortForwardFromS1ToS2_t::iterator ret;
+	std::pair<uint64_t, uint64_t> entrySwitchId (from, to);
+	ret = m_PortFrowardTable.find (entrySwitchId);
+	std::cout<<"From: "<<from<< " To: "<<to<<std::endl;
+	if (ret != m_PortFrowardTable.end ())
+	{
+		NS_LOG_INFO ("Found PortForward entry: " << from << " "<< to << " -> " << ret->second);
+		return ret->second;
+	}
+	NS_ABORT_MSG ("No PortForward information for this from and to.");
+
+}
+
+void QosController::SaveIpDestEntry(Ipv4Address address, uint64_t swtchDpId){
+	std::pair<Ipv4Address,uint64_t> entry (address,swtchDpId);
+	std::pair<IpSwitchMap_t::iterator,bool> ret;
+	ret = m_ipDestTable.insert (entry);
+	if (ret.second == true)
+	{
+		NS_LOG_INFO ("New IpDest entry: " << address << " - " << swtchDpId);
+		return;
+	}
+}
+
+uint64_t
+QosController::GetIpDestEntry(Ipv4Address address){
+	IpSwitchMap_t::iterator itr;
+	itr = m_ipDestTable.find(address);
+	if(itr!=m_ipDestTable.end()){
+		NS_LOG_INFO ("Found IpDestEntry entry: " << address << " - " << itr->second);
+		return itr->second;
+	}
+	NS_ABORT_MSG ("No IpDestEntry information for this IP.");
+}
+
+void
+QosController::setFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst){
+	std::list<int>::iterator itFrom, itTo;
+	itFrom = path.begin();
+	itTo = path.begin();
+	++itTo;//vai al secondo argomento
+	uint32_t switchFromPort;
+	while(itTo!=path.end()){
+		switchFromPort = GetPortForwardEntry(*itFrom,*itTo);
+		std::cout<<"FlowMod From: "<<*itFrom<<" To: "<<*itTo<<" ByPort: "<<switchFromPort<<std::endl;
+		std::ostringstream flow;
+		flow << "flow-mod table=0,cmd=add "
+				//<<" eth_type="<<ethernetType
+				//<<",ip_prot="<<ipProtocolNumber
+				<<" eth_type=0x0800"
+				<<",ip_src="<<ipSrc
+				<<",ip_dst="<<ipDst
+				<<" apply:output="<<switchFromPort;
+		//<<" meter:1 apply:output="<<switchFromPort;//lo1
+		DpctlExecute(GetRemoteSwitch(*itFrom),flow.str());
+		++itFrom;
+		++itTo;
+	}
+}
+
+
+
 
 
 

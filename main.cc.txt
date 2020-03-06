@@ -29,6 +29,9 @@ using namespace ns3;
 int
 main (int argc, char *argv[])
 {
+
+	Packet::EnablePrinting ();
+
 	/*Numero Client*/
 	uint16_t nClient = 2;
 	/*Numero Server*/
@@ -38,7 +41,7 @@ main (int argc, char *argv[])
 	bool trace = true;
 
 	std::string prot                 = "udp"; //protocollo usato per il dataNoise
-	std::string dataNoise            = "10Mbps"; //quanto traffico deve passare
+	std::string dataNoise            = "100Mbps"; //quanto traffico deve passare
 
 	// Configure command line parameters
 	CommandLine cmd;
@@ -78,25 +81,76 @@ main (int argc, char *argv[])
 	Ptr<Node> switchClient = CreateObject<Node> ();
 	// Create the SwitchServer node
 	Ptr<Node> switchServer = CreateObject<Node> ();
+	// Create the SwitchLoadBalancer node
+	Ptr<Node> switchLoadBalancer = CreateObject<Node> ();
+	// Create the SwitchIntermediate node
+	Ptr<Node> switchIntermediate = CreateObject<Node> ();
 
 	NodeContainer switchContainer= CreateObject<Node>();
 	switchContainer.Add(switchClient);
 	switchContainer.Add(switchServer);
+	switchContainer.Add(switchLoadBalancer);
+	switchContainer.Add(switchIntermediate);
 
 
-
-	/*---------------Connessione tra SwitchClient e SwitchServer--------------------*/
-
-	// Use the CsmaHelper to connect SwitchClient and SwitchServer with 100Mbps band
 	CsmaHelper csmaHelper;
+	NetDeviceContainer switchClientPorts, switchServerPorts, switchLoadBalancerPorts, switchIntermediatePorts;
+
+	NetDeviceContainer link;
+
+	/*---------------Connessione tra SwitchClient e SwitchIntermediate--------------------*/
+
+	// Use the CsmaHelper to connect SwitchClient and SwitchIntermediate with 100Mbps band
+
 	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
 	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
 
-	NetDeviceContainer switchClientPorts, switchServerPorts;
-
-	NodeContainer pair(switchClient,switchServer);
-	NetDeviceContainer link = csmaHelper.Install(pair);
+	link = csmaHelper.Install(NodeContainer (switchClient,switchIntermediate));
 	switchClientPorts.Add(link.Get(0));
+	switchIntermediatePorts.Add(link.Get(1));
+
+	/*---------------Connessione tra SwitchClient e SwitchLoadBalancer--------------------*/
+
+	// Use the CsmaHelper to connect SwitchClient and SwitchLoadBalancer with 100Mbps band
+
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	link = csmaHelper.Install(NodeContainer (switchClient,switchLoadBalancer));
+	switchClientPorts.Add(link.Get(0));
+	switchLoadBalancerPorts.Add(link.Get(1));
+
+	/*---------------Connessione tra SwitchLoadBalancer e SwitchIntermediate--------------------*/
+
+	// Use the CsmaHelper to connect SwitchLoadBalancer and SwitchIntermediate with 100Mbps band
+
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	link = csmaHelper.Install(NodeContainer (switchLoadBalancer,switchIntermediate));
+	switchLoadBalancerPorts.Add(link.Get(0));
+	switchIntermediatePorts.Add(link.Get(1));
+
+	/*---------------Connessione tra SwitchIntermediate e SwitchServer--------------------*/
+
+	// Use the CsmaHelper to connect SwitchIntermediate and SwitchServer with 100Mbps band
+
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	link = csmaHelper.Install(NodeContainer (switchIntermediate,switchServer));
+	switchIntermediatePorts.Add(link.Get(0));
+	switchServerPorts.Add(link.Get(1));
+
+	/*---------------Connessione tra SwitchLoadBalancer e SwitchServer--------------------*/
+
+	// Use the CsmaHelper to connect SwitchLoadBalancer and SwitchServer with 100Mbps band
+
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("100Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (2)));
+
+	link = csmaHelper.Install(NodeContainer (switchLoadBalancer,switchServer));
+	switchLoadBalancerPorts.Add(link.Get(0));
 	switchServerPorts.Add(link.Get(1));
 
 	/*---------------Connessione tra tutti gli Host e lo SwitchClient--------------------*/
@@ -108,7 +162,6 @@ main (int argc, char *argv[])
 	NetDeviceContainer hostDevicePorts; //è presente come secondo lo switchCLientPorts
 	for (size_t i = 0; i < nClient; i++)
 	{
-		//NodeContainer pair1(hosts,switchClient);
 		link = csmaHelper.Install (NodeContainer (hosts.Get (i), switchClient));
 		hostDevicePorts.Add (link.Get (0));
 		switchClientPorts.Add (link.Get (1));
@@ -124,7 +177,6 @@ main (int argc, char *argv[])
 
 	for (size_t i = 0; i < nServer; i++)
 	{
-		//NodeContainer pair2(switchServer, server);
 		link = csmaHelper.Install (NodeContainer (switchServer, servers.Get (i)));
 		switchServerPorts.Add(link.Get(0));
 		serverDevicePorts.Add(link.Get(1));;
@@ -146,8 +198,10 @@ main (int argc, char *argv[])
 
 	//Installiamo come device OpenFLow, i due switch che abbiamo creat
 	OFSwitch13DeviceContainer ofSwitchDevices;
-	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchClient, switchClientPorts));  //border switch
-	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchServer, switchServerPorts));  //aggregation switch
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchClient, switchClientPorts));
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchServer, switchServerPorts));
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchLoadBalancer, switchLoadBalancerPorts));
+	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (switchIntermediate, switchIntermediatePorts));
 	ofQosHelper->CreateOpenFlowChannels ();
 
 	// Install the TCP/IP stack into host and server nodes
@@ -227,6 +281,7 @@ main (int argc, char *argv[])
 		csmaHelper.EnablePcap ("switch", switchContainer, true);
 		csmaHelper.EnablePcap ("hosts", hosts, true);
 		csmaHelper.EnablePcap ("servers", servers, true);
+		csmaHelper.EnablePcap("controller", controller, true);
 	}
 
 
