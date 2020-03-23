@@ -80,6 +80,13 @@ private:
 	void ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch);
 	void ConfigureAggregationSwitch_FUB (Ptr<const RemoteSwitch> swtch);
 
+
+	/**
+	 *
+	 */
+	ofl_err HandleUDPPacketIn(
+			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
 	/**
 	 * Handle ARP request messages.
 	 * \param msg The packet-in message.
@@ -102,16 +109,20 @@ private:
 			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
 			uint32_t xid);
 
+	ofl_err HandleBarrierReply (
+			struct ofl_msg_header *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
 	/**
 	 * Extract an IPv4 address from packet match.
-	 * \param oxm_of The OXM_IF_* IPv4 field.
+	 * \param oxm_of The OXM_OF_* IPv4 field.
 	 * \param match The ofl_match structure pointer.
 	 * \return The IPv4 address.
 	 */
 	Ipv4Address ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match);
 	/**
 	 *Extract an Max address form packet match.
-	 *\param oxm_of the OXM_IF_* MAC field.
+	 *\param oxm_of the OXM_OF_* MAC field.
 	 *\param match The ofl_match structure pointer.
 	 *\return The MAC address.
 	 */
@@ -175,10 +186,15 @@ private:
 	void portSwitchConfiguration(uint64_t switchDpId, uint32_t port);
 
 	/*
+	 *
+	 */
+	int switchNetworkExplore(Ptr<const RemoteSwitch> swtch, uint32_t outputSwitchPort);
+	/*
 	 *Crea ed invia un pacchetto di esplorazione di rete allo switch indicato
 	 *\param swtch Lo switch a cui si vuole inviare il pacchetto di esplorazione di rete
+	 *\return 1 se tutto è andato bene
 	 */
-	void switchNetworkExplore(Ptr<const RemoteSwitch> swtch);
+	int switchNetworkExplore(Ptr<const RemoteSwitch> swtch);
 	/*
 	 *Crea un pacchetto UDP senza payload, con portDst=networkExplorerUdpPort e portSrc = portDst+fromSwitchId
 	 *\param fromSwitchId Il datapath id dello switch a cui si vuole inviare il pacchetto
@@ -197,6 +213,14 @@ private:
 	 *
 	 */
 	int SavePortForwardEntry (uint64_t from, uint64_t to, uint32_t port);
+	/*
+	 *
+	 */
+	uint32_t ExistPortForwardEntry(Ptr<const RemoteSwitch> switchFrom, Ptr<const RemoteSwitch> switchTo);
+	/*
+	 *
+	 */
+	uint32_t ExistPortForwardEntry(uint64_t form,  uint64_t to);
 	/*
 	 *
 	 */
@@ -248,7 +272,25 @@ private:
 	/*
 	 *
 	 */
-	void dijkstra(int** graph,int src, int vertex);
+	std::list<int> dijkstra(int** graph, int src, int dst, int vertex);
+	/*
+	 *
+	 */
+	/*
+	 *
+	 */
+	std::list<int> dijkstraPathExtract(int* parent, int vertex, int src, int dst);
+	/*
+	 *
+	 */
+	std::list<std::list<int>>
+	HopeKShortestPath(int** graph, int vertex, int src, int dst, int k, int algType);
+	/*
+	 *
+	 */
+	std::list<std::list<int>>
+	YenKShortestPath(int** graph, int vertex, int src, int dst, int k);
+
 	/*
 	 *Lancia una serie di Flow-Mod sugli switch identificati dal cammino passato come parametro
 	 *Permette quindi ad un flusso con le determinate caratteristiche passate come parametro di arrivare
@@ -256,7 +298,15 @@ private:
 	 *\param path La lista dei nodi che fanno parte del cammino in ordine di successione
 	 *\param
 	 */
-	void setFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst);
+	int addFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst);
+	/*
+	 *
+	 */
+	int addFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst, int weight);
+	/**
+	 *
+	 */
+	int ServiceManagerIPbased(int** graph, int nNode, Ipv4Address ipSrc, Ipv4Address ipDst);
 	/**
 	 * Save the pair IP / MAC address in ARP table.
 	 * \param ipAddr The IPv4 address.
@@ -294,6 +344,18 @@ private:
 	 *\return Il datapath id dello switch su cui si trova l'host
 	 */
 	uint64_t GetIpDestEntry(Ipv4Address address);
+	/*
+	 *
+	 */
+	void SaveServiceEntry(Ipv4Address address, std::list<int> weightList);
+	/*
+	 *
+	 */
+	bool ExistServiceEntry(Ipv4Address address);
+	/*
+	 *
+	 */
+	std::list<int> GetServiceEntry(Ipv4Address address);
 
 	Address   m_serverIpAddress;    //!< Virtual server IP address
 	uint16_t  m_serverTcpPort;      //!< Virtual server TCP port
@@ -307,6 +369,7 @@ private:
 	int** networkGrafe;
 	int ** networkMatrixPath;
 	int nSwitch = 0;
+	uint64_t group_id = 1;
 
 	std::string    InputWeight;          //input used to balance the two flows
 
@@ -324,6 +387,10 @@ private:
 
 	typedef std::map<Ipv4Address,uint64_t> IpSwitchMap_t;
 	IpSwitchMap_t m_ipDestTable;
+
+	/** Map saving <IPv4 address / List of Weight> */
+	typedef std::map<Ipv4Address, std::list<int>> IpServiceMap_t;
+	IpServiceMap_t m_IpServiceTable;          //!< Service table.
 
 };
 

@@ -1,5 +1,5 @@
 /*
- * quos-controller-backup.cc
+ * quos-controller.cc
  *
  *  Created on: 5 feb 2020
  *      Author: openflow
@@ -36,6 +36,9 @@ NS_OBJECT_ENSURE_REGISTERED (QosController);
 QosController::QosController ()
 {
 	NS_LOG_FUNCTION (this);
+	SaveServiceEntry("10.1.3.1",std::list<int> {1});
+	SaveServiceEntry("10.1.3.2",std::list<int> {1,1});
+	SaveServiceEntry("10.1.3.3",std::list<int> {1,2,2});
 }
 
 QosController::~QosController ()
@@ -56,40 +59,40 @@ TypeId
 QosController::GetTypeId (void)
 {
 	static TypeId tid = TypeId ("ns3::QosController")
-    																																																										.SetParent<OFSwitch13Controller> ()
-																																																											.SetGroupName ("OFSwitch13")
-																																																											.AddConstructor<QosController> ()
-																																																											.AddAttribute ("EnableMeter",
-																																																													"Enable per-flow mettering.",
-																																																													BooleanValue (false),
-																																																													MakeBooleanAccessor (&QosController::m_meterEnable),
-																																																													MakeBooleanChecker ())
-																																																													.AddAttribute ("MeterRate",
-																																																															"Per-flow meter rate.",
-																																																															DataRateValue (DataRate ("256Kbps")),
-																																																															MakeDataRateAccessor (&QosController::m_meterRate),
-																																																															MakeDataRateChecker ())
-																																																															.AddAttribute ("LinkAggregation",
-																																																																	"Enable link aggregation.",
-																																																																	BooleanValue (true),
-																																																																	MakeBooleanAccessor (&QosController::m_linkAggregation),
-																																																																	MakeBooleanChecker ())
-																																																																	.AddAttribute ("ServerIpAddr",
-																																																																			"Server IPv4 address.",
-																																																																			AddressValue (Address (Ipv4Address ("10.1.1.1"))),
-																																																																			MakeAddressAccessor (&QosController::m_serverIpAddress),
-																																																																			MakeAddressChecker ())
-																																																																			.AddAttribute ("ServerTcpPort",
-																																																																					"Server TCP port.",
-																																																																					UintegerValue (9),
-																																																																					MakeUintegerAccessor (&QosController::m_serverTcpPort),
-																																																																					MakeUintegerChecker<uint64_t> ())
-																																																																					.AddAttribute ("ServerMacAddr",
-																																																																							"Server MAC address.",
-																																																																							AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
-																																																																							MakeAddressAccessor (&QosController::m_serverMacAddress),
-																																																																							MakeAddressChecker ())
-																																																																							;
+    																																																																																																																																																																																																																																																																																																														.SetParent<OFSwitch13Controller> ()
+																																																																																																																																																																																																																																																																																																															.SetGroupName ("OFSwitch13")
+																																																																																																																																																																																																																																																																																																															.AddConstructor<QosController> ()
+																																																																																																																																																																																																																																																																																																															.AddAttribute ("EnableMeter",
+																																																																																																																																																																																																																																																																																																																	"Enable per-flow mettering.",
+																																																																																																																																																																																																																																																																																																																	BooleanValue (false),
+																																																																																																																																																																																																																																																																																																																	MakeBooleanAccessor (&QosController::m_meterEnable),
+																																																																																																																																																																																																																																																																																																																	MakeBooleanChecker ())
+																																																																																																																																																																																																																																																																																																																	.AddAttribute ("MeterRate",
+																																																																																																																																																																																																																																																																																																																			"Per-flow meter rate.",
+																																																																																																																																																																																																																																																																																																																			DataRateValue (DataRate ("256Kbps")),
+																																																																																																																																																																																																																																																																																																																			MakeDataRateAccessor (&QosController::m_meterRate),
+																																																																																																																																																																																																																																																																																																																			MakeDataRateChecker ())
+																																																																																																																																																																																																																																																																																																																			.AddAttribute ("LinkAggregation",
+																																																																																																																																																																																																																																																																																																																					"Enable link aggregation.",
+																																																																																																																																																																																																																																																																																																																					BooleanValue (true),
+																																																																																																																																																																																																																																																																																																																					MakeBooleanAccessor (&QosController::m_linkAggregation),
+																																																																																																																																																																																																																																																																																																																					MakeBooleanChecker ())
+																																																																																																																																																																																																																																																																																																																					.AddAttribute ("ServerIpAddr",
+																																																																																																																																																																																																																																																																																																																							"Server IPv4 address.",
+																																																																																																																																																																																																																																																																																																																							AddressValue (Address (Ipv4Address ("10.1.1.1"))),
+																																																																																																																																																																																																																																																																																																																							MakeAddressAccessor (&QosController::m_serverIpAddress),
+																																																																																																																																																																																																																																																																																																																							MakeAddressChecker ())
+																																																																																																																																																																																																																																																																																																																							.AddAttribute ("ServerTcpPort",
+																																																																																																																																																																																																																																																																																																																									"Server TCP port.",
+																																																																																																																																																																																																																																																																																																																									UintegerValue (9),
+																																																																																																																																																																																																																																																																																																																									MakeUintegerAccessor (&QosController::m_serverTcpPort),
+																																																																																																																																																																																																																																																																																																																									MakeUintegerChecker<uint64_t> ())
+																																																																																																																																																																																																																																																																																																																									.AddAttribute ("ServerMacAddr",
+																																																																																																																																																																																																																																																																																																																											"Server MAC address.",
+																																																																																																																																																																																																																																																																																																																											AddressValue (Address (Mac48Address ("00:00:00:00:00:01"))),
+																																																																																																																																																																																																																																																																																																																											MakeAddressAccessor (&QosController::m_serverMacAddress),
+																																																																																																																																																																																																																																																																																																																											MakeAddressChecker ())
+																																																																																																																																																																																																																																																																																																																											;
 	return tid;
 }
 
@@ -103,77 +106,9 @@ QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
 {
 	NS_LOG_FUNCTION (this << swtch);
 	std::cout<<"Vediamo "<< swtch->GetDpId() <<std::endl;
-	/*
-	if(swtch->GetDpId()==1){
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
-	}
-	if(swtch->GetDpId()==4){
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=3");
-	}
-	 */
-	//if(swtch->GetDpId()==1){
-	//DpctlExecute(swtch,"meter-mod cmd=add,flags=1,meter=1 drop:rate=1000");//lo1...dscp_remark:rate=10,prec_level=8
-	//}
-	//DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=8 apply:output=2");
 
 
-	/*TEST METER TABLE*/
-
-	if(swtch->GetDpId()==1){
-		DpctlExecute(swtch,"stats-meter 1");
-		DpctlExecute(swtch,"meter-features");
-		DpctlExecute(swtch,"meter-config 1");
-		/*
-		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=10000");//,burst=20000 e dscp_remark:rate=1000,prec_level=1 --> 100Mbits = 100000 bit/s
-		DpctlExecute(swtch,"meter-mod cmd=add,meter=2,flags=1 drop:rate=10000");
-
-		struct ofl_meter_band_dscp_remark* meterModBands = (ofl_meter_band_dscp_remark*)xmalloc(sizeof(ofl_meter_band_dscp_remark));
-		meterModBands->type=OFPMBT_DSCP_REMARK;
-		meterModBands->rate=10000;
-		meterModBands->prec_level=(-14);
-
-
-
-		struct ofl_msg_meter_mod meterMod;
-		meterMod.header.type=OFPT_METER_MOD;
-		meterMod.command=OFPMC_ADD;
-		meterMod.flags=OFPMF_KBPS; // impone kbps
-		meterMod.meter_id=3;
-		meterMod.bands=(ofl_meter_band_header**)&meterModBands;
-		meterMod.meter_bands_num=1;
-
-		SendToSwitch (swtch, (struct ofl_msg_header*)&meterMod, GetNextXid());
-		 */
-		/*FUNZIONANTE*/
-		/*
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:set_field=ip_dscp:4,output=1");//set_field=ip_dscp:32,
-		 */
-		/*FINE FUNZIONANTE*/
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=1");
-
-	}
-	if(swtch->GetDpId()==3){
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:output=3");
-	}
-	if(swtch->GetDpId()==4){
-		/*PROVA FUNZIONANTE FLOW-SLICING-INTRASWITCH*/
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 apply:set_field=ip_dscp:4 goto:1");
-		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=1000,prec_level=1");
-		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 meter:1 goto:2");
-		DpctlExecute(swtch,"flow-mod table=2,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=4 apply:output=2");
-		DpctlExecute(swtch,"flow-mod table=2,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=6 apply:output=3");
-		/*FINE PROVA*/
-		/*FUNZIONANTE*/
-		/*
-		DpctlExecute(swtch,"meter-mod cmd=add,meter=1,flags=1 dscp_remark:rate=1000,prec_level=1");
-		DpctlExecute(swtch,"flow-mod table=0,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1 meter:1 goto:1");
-		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=4 apply:output=2");
-		DpctlExecute(swtch,"flow-mod table=1,cmd=add eth_type=0x800,ip_proto=17,ip_src=10.1.2.2,ip_dst=10.1.3.1,ip_dscp=6 apply:output=3");
-		 */
-		/*FINE FUNZIONANTE*/
-	}
-
-	/*FINE TEST METER TABLE*/
+	SendBarrierRequest (swtch);
 
 	ConfigureBorderSwitch_FUB(swtch);
 	SendBarrierRequest (swtch); //Per tentare di fargli eseguire tutti i comandi ricevuti prima di questo e poi gli altri, ma non funziona
@@ -191,8 +126,22 @@ QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
 		nSwitch++;
 
 		firstNetworkExplorer=1;
-		NetworkExplorerFunction();
+		SendBarrierRequest (swtch);
+		//NetworkExplorerFunction();
+		switchNetworkExplore(swtch);
+		SendBarrierRequest (swtch);
 	}
+}
+
+ofl_err
+QosController::HandleBarrierReply (
+		struct ofl_msg_header *msg, Ptr<const RemoteSwitch> swtch,
+		uint32_t xid){
+	std::cout<<"Barrier Reply with xid: "<< xid<<std::endl;
+
+	// All handlers must free the message when everything is ok
+	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	return 0;
 }
 
 
@@ -220,10 +169,13 @@ QosController::HandlePacketIn (
 			if(firstNetworkExplorer==1){ //only the first packet-in enable the exploring
 				std::cout<<"Prima esplorazione"<<std::endl;
 				NetworkExplorerFunction();
+				//switchNetworkExplore(GetRemoteSwitch(4));
 				firstNetworkExplorer=2;
 			}else if(firstNetworkExplorer==2){
 				networkGrafe = GrafeGeneration(nSwitch);
-				networkMatrixPath = floydWarshall(networkGrafe,nSwitch);
+				//networkMatrixPath = floydWarshall(networkGrafe,nSwitch);
+				//std::list<std::list<int>> kPath = YenKShortestPath(networkGrafe, nSwitch, 1,2,6);
+
 				firstNetworkExplorer = 0;
 			}else{
 				return HandleArpPacketIn (msg, swtch, xid);
@@ -231,38 +183,16 @@ QosController::HandlePacketIn (
 		}
 		else if (ethType == Ipv4L3Protocol::PROT_NUMBER)
 		{
-			//std::cout << "è un pacchetto Ipv4L3Protocol" << std::endl;
-
+			//Protocollo di servizio del pacchetto
 			uint8_t ipProtocolId = ExtractIpProtocolID((struct ofl_match*)msg->match);
-			//std::cout<<"id_protcol: "<< id_protocol<<std::endl;
-
 			if(ipProtocolId == UdpL4Protocol::PROT_NUMBER){ //Sarà un pacchetto udp
-				std::cout<<"UDP!!!!!"<<std::endl;
-
-				uint16_t udp_dst_port= ExtractUdpPort(OXM_OF_UDP_DST,(struct ofl_match*)msg->match);;
-
-				if(udp_dst_port == networkExplorerUdpPort){ //è un pacchetto di esplorazione di rete
-					uint16_t udp_src_port = ExtractUdpPort(OXM_OF_UDP_SRC,(struct ofl_match*)msg->match);
-					uint32_t inPort = ExtractInPort((struct ofl_match*)msg->match);
-
-					std::cout<< "pacchetto explorer UDP da: "<< udp_src_port - networkExplorerUdpPort << " in port: "<< inPort << " dello switch: "<< swtch->GetDpId()<< std::endl;
-
-					uint64_t fromSwitch = swtch->GetDpId();
-					uint64_t toSwitch = udp_src_port - networkExplorerUdpPort;
-					uint32_t portUseInFrom = inPort;
-
-					SavePortForwardEntry(fromSwitch,toSwitch,portUseInFrom);
-					portSwitchConfiguration(fromSwitch,portUseInFrom);
-				}else{
-					//Gestisci altri pacchetti udp
-					std::cout<< "pacchetto generico UDP (NON EXPLORER)" << std::endl;
-				}
-			}else if(ipProtocolId == TcpL4Protocol::PROT_NUMBER){
+				return HandleUDPPacketIn(msg, swtch, xid);
+			}
+			if(ipProtocolId == TcpL4Protocol::PROT_NUMBER){ //Sarà un pacchetto tcp
 				return HandleConnectionRequest (msg, swtch, xid);
 			}
 		}
-		else
-		{
+		else{//Pacchetto NON ancora gestito
 			std::cout<< "altro tipo di pacchetto" << std::endl;
 		}
 	}
@@ -313,6 +243,37 @@ QosController::ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 	DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=1 "
 			"eth_type=0x0800 apply:output=ctrl");
 	//std::cout << "Regola Impostata" << std::endl;
+
+	if(swtch->GetDpId() == 1){
+		//GROUP MOD
+		//è una group che seleziona il forwarding sulla base dei weight
+		/*
+		DpctlExecute(swtch,"group-mod cmd=add,type=sel,group=1 "
+				" weight=3,port=any,group=any output=1 "
+				" weight=1,port=any,group=any output=2 "
+				" weight=3,port=any,group=any output=3");
+		 */
+		//FLOW MOD
+		/*
+		DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=20 "
+				"eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1,ip_dst=10.1.3.2 write:group=1");
+		 */
+	}
+
+	if(swtch->GetDpId() == 2){
+
+	}
+
+	if(swtch->GetDpId() == 3){
+		//DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=20 "
+		//		"eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1,ip_dst=10.1.3.2 apply:output=3");
+	}
+
+	if(swtch->GetDpId() == 4){
+		//DpctlExecute(swtch,"flow-mod cmd=add,table=0,prio=20 "
+		//		"eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1,ip_dst=10.1.3.2 apply:output=3");
+	}
+
 }
 
 
@@ -322,6 +283,47 @@ QosController::ConfigureAggregationSwitch_FUB (Ptr<const RemoteSwitch> swtch)
 {
 	NS_LOG_FUNCTION (this << swtch);
 
+}
+
+ofl_err
+QosController::HandleUDPPacketIn(
+		struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+		uint32_t xid){
+	//std::cout<<"UDP!!!!!"<<std::endl;
+	uint16_t udp_dst_port= ExtractUdpPort(OXM_OF_UDP_DST,(struct ofl_match*)msg->match);;
+
+	if(udp_dst_port == networkExplorerUdpPort){ //è un pacchetto di esplorazione di rete
+		uint16_t udp_src_port = ExtractUdpPort(OXM_OF_UDP_SRC,(struct ofl_match*)msg->match);
+		uint32_t inPort = ExtractInPort((struct ofl_match*)msg->match);
+
+		std::cout<< "pacchetto explorer UDP da: "<< udp_src_port - networkExplorerUdpPort << " in port: "<< inPort << " dello switch: "<< swtch->GetDpId()<< std::endl;
+
+		uint64_t fromSwitch = swtch->GetDpId();
+		uint64_t toSwitch = udp_src_port - networkExplorerUdpPort;
+		uint32_t portUseInFrom = inPort;
+
+		if(!ExistPortForwardEntry(fromSwitch,toSwitch)){
+			SavePortForwardEntry(fromSwitch,toSwitch,portUseInFrom);
+			portSwitchConfiguration(fromSwitch,portUseInFrom);
+			//fromSwitch ha ricevuto un pacchetto per una certa porta, da uno switch a lui sconosciuto
+			//per quella stessa porta sarà reinviato un pacchetto explorere di fromSwitch
+			//che sarà ricevuto dal nuovo switch
+			if(!ExistPortForwardEntry(toSwitch,fromSwitch)){ //Se non esiste un collegamento inverso, esploriamo quello appena trovato
+				std::cout<<"Pacchetto con impostazione inPort"<<std::endl;
+				std::cout<< "invio pacchetto explorer UDP per: "<< toSwitch << " in port: "<< inPort << " de switch: "<< fromSwitch<< std::endl;
+				switchNetworkExplore(GetRemoteSwitch(fromSwitch),inPort);
+			}
+		}else{
+			std::cout<<"Un pacchetto strano"<<std::endl;
+		}
+	}else{
+		//Gestisci altri pacchetti udp
+		//std::cout<< "pacchetto generico UDP (NON EXPLORER)" << std::endl;
+	}
+	// All handlers must free the message when everything is ok
+	ofl_msg_free ((struct ofl_msg_header*)msg, 0);
+	//std::cout<< "fine gestione arp packet" << std::endl;
+	return 0;
 }
 
 ofl_err
@@ -373,6 +375,9 @@ QosController::HandleArpPacketIn (
 			showElementList(path);
 			setFlowModToPathSwitch(path,srcIp,dstIp);
 			 */
+			ServiceManagerIPbased(networkGrafe,nSwitch,srcIp,dstIp);
+
+
 			Mac48Address dstMac = GetArpEntry(dstIp);
 			Ptr<Packet> pkt = CreateArpReply(dstMac,dstIp,srcMac,srcIp);
 			NS_ASSERT_MSG(pkt->GetSize() == 64, "Invalid packet size.");
@@ -562,8 +567,14 @@ QosController::NetworkExplorerFunction(){
 	}
 }
 
-void
+
+int
 QosController::switchNetworkExplore(Ptr<const RemoteSwitch> swtch){
+	return switchNetworkExplore(swtch,OFPP_FLOOD);
+}
+
+int
+QosController::switchNetworkExplore(Ptr<const RemoteSwitch> swtch, uint32_t outputSwitchPort){
 
 	//std::cout<< "Inizio Network Explorer"<< std::endl;
 	uint8_t pktExplorer[64];
@@ -575,7 +586,7 @@ QosController::switchNetworkExplore(Ptr<const RemoteSwitch> swtch){
 	struct ofl_action_output *action =
 			(struct ofl_action_output*)xmalloc (sizeof (struct ofl_action_output));
 
-	shortActionOuputCreator(action, OFPP_FLOOD ,0);
+	shortActionOuputCreator(action, outputSwitchPort ,0);
 
 	struct ofl_msg_packet_out explorer;
 	explorer.header.type=OFPT_PACKET_OUT;
@@ -586,7 +597,9 @@ QosController::switchNetworkExplore(Ptr<const RemoteSwitch> swtch){
 	explorer.data=&pktExplorer[0];
 	explorer.data_length=64;
 
-	SendToSwitch(swtch,(struct ofl_msg_header*)&explorer,GetNextXid());
+	std::cout<<"Inviato Explorer"<<std::endl;
+
+	return SendToSwitch(swtch,(struct ofl_msg_header*)&explorer,GetNextXid());
 }
 
 
@@ -686,12 +699,12 @@ QosController::GrafeGeneration(int nSwitch){
 			grafe[i][j]=INF;
 		}
 	}
-	std::cout<<"grafo inizializzato"<<std::endl;
+	//std::cout<<"grafo inizializzato"<<std::endl;
 	PortForwardFromS1ToS2_t::iterator itr;
 	for(itr = m_PortFrowardTable.begin(); itr != m_PortFrowardTable.end(); ++itr){
-		std::cout<<"itr"<<std::endl;
 		grafe[itr->first.first-1][itr->first.second-1]=1;
 	}
+
 	std::cout<<"grafo scritto"<<std::endl;
 	for(int i=0; i<nSwitch; i++){
 		for(int j=0; j<nSwitch; j++){
@@ -700,6 +713,7 @@ QosController::GrafeGeneration(int nSwitch){
 		std::cout<<std::endl;
 	}
 	std::cout<<"grafo stampato"<<std::endl;
+
 	return grafe;
 }
 
@@ -763,7 +777,449 @@ QosController::floydWarshall (int** graph, const int V)
 	printSolution(next, V);
 	return next;
 }
+//Inizio Dikjstra
+void printPath(int parent[], int j)
+{
 
+	// Base Case : If j is source
+	if (parent[j] == - 1)
+		return;
+
+	printPath(parent, parent[j]);
+
+	printf("%d ", j+1);
+}
+
+void printArray(int arr[], int n)
+{
+	printf("****************************\n");
+	for (int i = 0; i < n; i++)
+		printf("%d tt %d\n", i, arr[i]);
+	printf("****************************\n");
+}
+
+int minDistance(int dist[], bool sptSet[], int vertex)
+{
+	// Initialize min value
+	int min = INF, min_index;
+
+	for (int v = 0; v < vertex; v++)
+		if (sptSet[v] == false && dist[v] <= min)
+			min = dist[v], min_index = v;
+
+	return min_index;
+}
+
+std::list<int>
+QosController::dijkstraPathExtract(int* parent, int vertex, int src, int dst){
+	std::list<int> pathList;
+
+	pathList.push_front(dst+1); //Mette in testa
+	int pred=parent[dst];
+	while(pred!=-1){
+		pathList.push_front(pred+1); //Mette in testa
+		pred = parent[pred];
+	}
+	/*
+	std::cout<<"Cammino da "<< src+1<< " a " << dst+1 <<std::endl;
+	for (std::list<int>::iterator it=pathList.begin(); it!=pathList.end(); ++it)
+		std::cout << ' ' << *it;
+	std::cout<< " " << std::endl;
+	 */
+
+	return pathList;
+}
+
+std::list<int>
+QosController::dijkstra(int** graph,int src, int dst, int vertex) //Method to implement shortest path algorithm
+{
+
+	src--;
+	dst--;
+	int dist[vertex]; // The output array. dist[i] will hold the shortest
+	// distance from src to i
+
+	bool sptSet[vertex]; // sptSet[i] will be true if vertex i is included in shortest
+	// path tree or shortest distance from src to i is finalized
+
+	int parent[vertex];
+
+	// Initialize all distances as INFINITE and stpSet[] as false
+	for (int i = 0; i < vertex; i++){
+		parent[i] = -1;
+		dist[i] = INF;
+		sptSet[i] = false;
+	}
+
+
+	// Distance of source vertex from itself is always 0
+	dist[src] = 0;
+
+	// Find shortest path for all vertices
+	for (int count = 0; count < vertex - 1; count++) {
+		// Pick the minimum distance vertex from the set of vertices not
+		// yet processed. u is always equal to src in the first iteration.
+		int u = minDistance(dist, sptSet, vertex);
+
+		// Mark the picked vertex as processed
+		sptSet[u] = true;
+
+		// Update dist value of the adjacent vertices of the picked vertex.
+		for (int v = 0; v < vertex; v++)
+
+			// Update dist[v] only if is not in sptSet, there is an edge from
+			// u to v, and total weight of path from src to v through u is
+			// smaller than current value of dist[v]
+			if (!sptSet[v] && graph[u][v] && dist[u] != INF
+					&& dist[u] + graph[u][v] < dist[v]){
+				parent[v] = u;
+				dist[v] = dist[u] + graph[u][v];
+			}
+	}
+	//printArray(dist, vertex);
+	if(dist[dst]>=INF){
+		//std::cout<<"toFAR"<<std::endl;
+		std::list<int> toFar;
+		return toFar;
+	}
+
+	return dijkstraPathExtract(parent,vertex,src,dst);
+}
+
+std::list<std::list<int>>
+QosController::HopeKShortestPath(int** graph, int vertex, int src, int dst, int k, int algType){
+
+	std::list<std::list<int>> kPathList;
+	std::list<std::list<int>>::iterator kPathListIterator = kPathList.begin();
+	std::queue<std::pair<int,int>> edgeQueue;
+
+	std::list<int> lastPathFounded = dijkstra(graph,src,dst,vertex);
+	int nPath=1;
+
+	kPathList.insert(kPathListIterator,lastPathFounded);
+
+	std::cout<<"Prima While"<<std::endl;
+
+	while((!lastPathFounded.empty())&&(nPath<k)){
+
+		for(int i = 0; i<vertex; i++){
+			for(int j=0; j<vertex; j++){
+				std::cout<<" "<< graph[i][j];
+			}
+			std::cout<<std::endl;
+		}
+		//Che tipologia di ricerce future deve fare
+		if(algType==1){//Senza ripetizioni di nodi atraversati in precedenza
+			std::cout<<"No Per Stessi Nodi"<<std::endl;
+			std::list<int>::iterator fromIt=lastPathFounded.begin();
+			std::list<int>::iterator toIt=lastPathFounded.begin();
+			++fromIt;
+			++toIt;
+			++toIt;
+			while(toIt!=lastPathFounded.end()){
+				std::cout<<"Elimino Nodo: "<< *fromIt-1 <<std::endl;
+				for(int i=0; i<vertex; i++){
+					std::cout<<"Elimino Arco: "<< *fromIt << " <-> " << *toIt <<std::endl;
+					graph[*fromIt-1][i]=INF;
+					graph[i][*fromIt-1]=INF;
+				}
+				++fromIt;
+				++toIt;
+			}
+		}else{//Con ripetizioni di nodi nodi attraversati in precedenza
+			std::cout<<"Si per Nodi"<<std::endl;
+			if(algType==2){//Senza passare su archi di altri path
+				std::cout<<"Senza stesi archi"<<std::endl;
+				std::list<int>::iterator fromIt=lastPathFounded.begin();
+				std::list<int>::iterator toIt=lastPathFounded.begin();
+				++toIt;
+				while(toIt!=lastPathFounded.end()){
+					std::cout<<"Elimino Arco: "<< *fromIt << " <-> " << *toIt <<std::endl;
+					graph[*fromIt-1][*toIt-1]=INF;
+					graph[*toIt-1][*fromIt-1]=INF;
+					++fromIt;
+					++toIt;
+				}
+			}else if(algType==3){
+				//Con ripetizione di archi di altri path
+				//Ma eliminando l'arco del path più pesante
+				/*
+				std::cout<<"Con ripetizioni di altri path, ma eliminando un arco alla volta"<<std::endl;
+				std::list<int>::iterator fromIt=lastPathFounded.begin();
+				std::list<int>::iterator toIt=lastPathFounded.begin();
+				++toIt;
+				std::pair<int,int> arco;
+				while(toIt!=lastPathFounded.end()){
+					std::cout<<"Memorizzo Archo da eliminare dopo: "<< *fromIt << " <-> " << *toIt <<std::endl;
+					arco.first=*fromIt;
+					arco.second=*toIt;
+					edgeQueue.push(arco);
+					++fromIt;
+					++toIt;
+				}
+				//Elimino un arco
+				std::cout<<"Elimino Arco: "
+				 */
+
+			}
+		}
+
+		/*
+		for(int i = 0; i<vertex; i++){
+			for(int j=0; j<vertex; j++){
+				std::cout<<" "<< graph[i][j];
+			}
+			std::cout<<std::endl;
+		}
+		 */
+
+
+
+		//Cerchiamo il prossimo
+		lastPathFounded = dijkstra(graph,src,dst,vertex);
+		if(!lastPathFounded.empty())
+			kPathList.insert(kPathListIterator,lastPathFounded);
+
+
+		nPath++;
+	}
+
+	//Rigenera grafo originale
+	GrafeGeneration(nSwitch);
+
+	std::cout<<"Tutti i cammini estratti"<<std::endl;
+	for (std::list<std::list<int>>::iterator kPathListIterator = kPathList.begin(); kPathListIterator!=kPathList.end(); ++kPathListIterator){
+		for(std::list<int>::iterator path = (*kPathListIterator).begin(); path!=(*kPathListIterator).end(); ++path)
+			std::cout << ' ' << *path;
+		std::cout<< " " << std::endl;
+	}
+
+	return kPathList;
+}
+
+
+
+std::list<int> pathFromTo (std::list<int> path, int fromExtract, int toExtract){
+	std::list<int> A;
+	std::list<int>::iterator AIter = A.begin();
+
+	int pos=0;
+	for(std::list<int>::iterator pathIter = path.begin(); pathIter != path.end(); ++pathIter){
+		if((fromExtract<=pos)&&(pos<=toExtract)){
+			A.insert(AIter,(*pathIter));
+		}
+		pos++;
+	}
+	return A;
+}
+
+int extractElementFromPath(std::list<int> path, uint64_t pos){
+	std::cout<<"Dentro extractElementFromPath"<<std::endl;
+	std::list<int>::iterator pathIter;
+	uint64_t actualPos = 0;
+	for(pathIter = path.begin(); pathIter != path.end(); ++pathIter){
+		if(actualPos==pos)
+			return (*pathIter);
+		actualPos++;
+	}
+	return -1;
+}
+
+bool equalPath(std::list<int> A, std::list<int> B){
+	std::list<int>::iterator AIter = A.begin();
+	std::list<int>::iterator BIter = B.begin();
+	while((AIter != A.end())&&(BIter != B.end())){
+		if((*AIter)!=(*BIter))
+			return false;
+		++AIter;
+		++BIter;
+	}
+	if((AIter == A.end())&&(BIter == B.end()))
+		return true;
+	return false;
+}
+
+std::pair<int,int> getEdge(std::list<int> path, int fromPos, int toPos){
+	std::pair<int,int> result;
+	std::list<int>::iterator PathIter = path.begin();
+	int actualPos = 0;
+	while(fromPos!=actualPos){
+		actualPos++;
+		++PathIter;
+	}
+	result.first = (*PathIter);
+	++PathIter;
+	result.second = (*PathIter);
+	return result;
+}
+
+std::list<int> listConcat(std::list<int> A, std::list<int> B){
+	A.reverse();
+	std::list<int>::iterator AIter;
+	for(AIter = A.begin(); AIter != A.end(); ++AIter){
+		B.push_front((*AIter));
+	}
+	return B;
+}
+
+bool inListOfList(std::list<std::list<int>> listOfList, std::list<int> list){
+	std::list<std::list<int>>::iterator listOfListIter;
+	for(listOfListIter = listOfList.begin(); listOfListIter != listOfList.end(); ++listOfListIter){
+		if(equalPath((*listOfListIter),list))
+			return true;
+	}
+	return false;
+}
+
+uint64_t pathCost(std::list<int> path, int** grafe){
+	std::list<int>::iterator pathIterFrom = path.begin();
+	std::list<int>::iterator pathIterTo = path.begin();
+	++pathIterTo;
+	uint64_t totalPathCost = 0;
+	while(pathIterTo != path.end()){
+		totalPathCost += grafe[*pathIterFrom-1][*pathIterTo-1];
+		++pathIterFrom;
+		++pathIterTo;
+	}
+	return totalPathCost;
+}
+
+std::list<int> shortPath(std::list<std::list<int>> listOfList, int ** graph){
+	std::list<int> toShort;
+	std::list<std::list<int>>::iterator listOfListIter;
+
+
+	listOfListIter = listOfList.begin();
+	toShort = (*listOfListIter);
+	uint64_t toShortCost = pathCost(toShort,graph);
+
+	for(++listOfListIter;listOfListIter != listOfList.end(); ++listOfListIter){
+		uint64_t controll = pathCost(*listOfListIter,graph);
+		if(toShortCost>controll){
+			toShort = (*listOfListIter);
+			toShortCost = controll;
+		}
+	}
+	return toShort;
+}
+
+
+std::list<std::list<int>>
+QosController::YenKShortestPath(int** graph, int vertex, int src, int dst, int k){
+	std::list<std::list<int>> A;
+	std::list<std::list<int>>::iterator AIter = A.begin();
+	std::list<int> lastPathFounded = dijkstra(graph,src,dst,vertex);
+	A.insert(AIter,lastPathFounded);
+	--AIter; //Server per l'algoritmo che stia al primo argomento
+
+	std::list<std::pair<int,int>> removeEdge;
+
+	std::list<std::list<int>> B;
+
+	for(int i=1; i<k; i++){ //Ho già un path, per questo parto da 1
+		//Prendo un nodo chiave che è un nodo di uno dei percorsi avuti in precedenza in ordine
+
+		std::list<int> attuale = (*AIter);
+		std::list<std::pair<int,int>> grafeEdge;
+		int j=0;
+		for(std::list<int>::iterator attualeIter = attuale.begin(); attualeIter != attuale.end(); ++attualeIter){
+			if((*attualeIter)!=dst){
+
+				int spurNode = (*attualeIter);//Nodo di partenza
+
+				std::list<int> rootPath = pathFromTo(attuale,0,j);
+
+				//Tolgo il Path del pathRoot fino a qui
+				std::list<int>::iterator rootPathIter = rootPath.begin();
+				while(rootPathIter != rootPath.end()){
+					if(((*rootPathIter)-1) != (spurNode-1)){
+
+						for(int i=0; i<vertex; i++){
+							if(graph[(*rootPathIter)-1][i] != INF){
+								std::pair<int,int> edge;
+								edge.first = ((*rootPathIter));
+								edge.second = i+1;
+								grafeEdge.push_front(edge);
+								//std::cout<<"Edge tolto: " << edge.first << " <-> " << edge.second <<std::endl;
+								//Nel frattempo aggiorno il grafo
+								graph[edge.first-1][edge.second-1]=INF;
+								graph[edge.second-1][edge.first-1]=INF;
+							}
+						}
+
+					}
+					++rootPathIter;
+				}
+				//Tolgo Archi già presenti nei singoli Path in A
+				std::list<std::list<int>>::iterator AIterTwo;
+				for(AIterTwo = A.begin(); AIterTwo != A.end(); ++AIterTwo){
+					if(equalPath(rootPath,pathFromTo((*AIterTwo),0,j))){
+						std::pair<int,int> edge = getEdge((*AIterTwo),j,j+1);
+						grafeEdge.push_front(edge);
+						//std::cout<<"Edge tolto: " << edge.first << " <-> " << edge.second <<std::endl;
+						//Nel frattempo aggiorno il grafo
+						graph[edge.first-1][edge.second-1]=INF;
+						graph[edge.second-1][edge.first-1]=INF;
+					}
+				}
+
+
+
+
+
+
+				//Ora che ho eliminato gli archi simili ai successivi, prendo il prossimo cammino
+
+				std::list<int> spurPath = dijkstra(graph,spurNode,dst,vertex);//Contiene lo spureNode
+
+				//Siccome rooPath, contiene come ultimo nodo spurNode e spurPath contien spurNode come primo ,elimino il primo elemento di spurPath
+				if(!spurPath.empty()){
+					spurPath.pop_front();
+
+
+					//Unisco il mio nuovo percorso diverso dai precedenti
+					std::list<int> totalPath = listConcat(rootPath,spurPath);
+
+
+					if(!inListOfList(A,totalPath))
+						B.push_back(totalPath);
+				}
+				//Re integro gli archi che ho tolto per fare le considerazioni
+				for(std::list<std::pair<int,int>>::iterator grafeEdgeIter = grafeEdge.begin(); grafeEdgeIter != grafeEdge.end(); ++grafeEdgeIter){
+					std::pair<int,int> edge = (*grafeEdgeIter);
+					//std::cout<<"Edge messo: " << edge.first << " <-> " << edge.second <<std::endl;
+					graph[edge.first-1][edge.second-1]=1;
+					graph[edge.second-1][edge.first-1]=1;
+				}
+
+				j++;
+
+			}
+		}
+		if(B.empty()){
+			i=k;
+		}else{
+			++AIter;
+			std::list<int> toRemove = shortPath(B,graph);
+			A.insert(AIter,toRemove);
+			B.remove(toRemove);
+			--AIter;
+
+		}
+	}
+	//Rigenera grafo originale
+	GrafeGeneration(nSwitch);
+
+
+	std::cout<<"Tutti i cammini estratti"<<std::endl;
+	for (std::list<std::list<int>>::iterator AIterTre = A.begin(); AIterTre!=A.end(); ++AIterTre){
+		for(std::list<int>::iterator path = (*AIterTre).begin(); path!=(*AIterTre).end(); ++path)
+			std::cout << ' ' << *path;
+		std::cout<< " " << std::endl;
+	}
+
+	return A;
+}
 
 
 std::list<int>
@@ -779,12 +1235,12 @@ QosController::extractPath(int ** graph, const int V, int from, int to){
 	std::list<int>::iterator it;
 	it = pathList.begin();
 
-	std::cout<<"Cammino: "<<from<<std::endl;
+	//std::cout<<"Cammino: "<<from<<std::endl;
 
-	std::cout<<"Nodo: "<<from+1<<std::endl;
+	//std::cout<<"Nodo: "<<from+1<<std::endl;
 	pathList.insert(it,from+1);
 	while(from!=to){
-		std::cout<<"Nodo: "<< graph[from][to]+1<<std::endl;
+		//std::cout<<"Nodo: "<< graph[from][to]+1<<std::endl;
 		pathList.insert(it,graph[from][to]+1);
 		from=graph[from][to];
 	}
@@ -1059,6 +1515,25 @@ QosController::SavePortForwardEntry (uint64_t from, uint64_t to, uint32_t port)
 }
 
 uint32_t
+QosController::ExistPortForwardEntry(Ptr<const RemoteSwitch> switchFrom, Ptr<const RemoteSwitch> switchTo){
+	return ExistPortForwardEntry(switchFrom->GetDpId(),switchTo->GetDpId());
+}
+
+uint32_t
+QosController::ExistPortForwardEntry(uint64_t from, uint64_t to){
+	PortForwardFromS1ToS2_t::iterator ret;
+	std::pair<uint64_t, uint64_t> entrySwitchId (from, to);
+	ret = m_PortFrowardTable.find(entrySwitchId);
+	if (ret != m_PortFrowardTable.end ())
+	{
+		std::cout<<"Just exist Port From: "<<from<< " To: "<<to<<std::endl;
+		return true;
+	}
+	return false;
+}
+
+
+uint32_t
 QosController::GetPortForwardEntry (Ptr<const RemoteSwitch> switchFrom, Ptr<const RemoteSwitch> switchTo){
 	return GetPortForwardEntry(switchFrom->GetDpId(),switchTo->GetDpId());
 }
@@ -1102,12 +1577,77 @@ QosController::GetIpDestEntry(Ipv4Address address){
 }
 
 void
-QosController::setFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst){
+QosController::SaveServiceEntry(Ipv4Address address, std::list<int> weightList){
+	std::pair<Ipv4Address, std::list<int>> entry (address, weightList);
+	std::pair<IpServiceMap_t::iterator,bool> ret;
+	ret = m_IpServiceTable.insert(entry);
+	if (ret.second == true)
+	{
+		return;
+	}
+}
+
+bool
+QosController::ExistServiceEntry(Ipv4Address address){
+	IpServiceMap_t::iterator itr;
+	itr = m_IpServiceTable.find(address);
+	if(itr!=m_IpServiceTable.end()){
+		return true;
+	}
+	return false;
+}
+
+std::list<int>
+QosController::GetServiceEntry(Ipv4Address address){
+	IpServiceMap_t::iterator itr;
+	itr = m_IpServiceTable.find(address);
+	if(itr!=m_IpServiceTable.end()){
+		NS_LOG_INFO ("Found IpService entry: " << address);
+		return itr->second;
+	}
+	NS_ABORT_MSG ("No IpDestEntry information for this IP.");
+}
+
+int
+QosController::addFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst){
 	std::list<int>::iterator itFrom, itTo;
 	itFrom = path.begin();
 	itTo = path.begin();
 	++itTo;//vai al secondo argomento
 	uint32_t switchFromPort;
+
+	while(itTo!=path.end()){
+
+
+
+		switchFromPort = GetPortForwardEntry(*itFrom,*itTo);
+		std::cout<<"FlowMod From: "<<*itFrom<<" To: "<<*itTo<<" ByPort: "<<switchFromPort<<std::endl;
+		std::ostringstream flow;
+		flow << "flow-mod table=0,cmd=add "
+				//<<" eth_type="<<ethernetType
+				//<<",ip_prot="<<ipProtocolNumber
+				<<" eth_type=0x0800"
+				<<",ip_src="<<ipSrc
+				<<",ip_dst="<<ipDst
+				<<" apply:output="<<switchFromPort;
+		//<<" meter:1 apply:output="<<switchFromPort;//lo1
+		DpctlExecute(GetRemoteSwitch(*itFrom),flow.str());
+		++itFrom;
+		++itTo;
+	}
+	return 1;
+}
+
+
+
+int
+QosController::addFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ipv4Address ipDst, int weight){
+	std::list<int>::iterator itFrom, itTo;
+	itFrom = path.begin();
+	itTo = path.begin();
+	++itTo;//vai al secondo argomento
+	uint32_t switchFromPort;
+
 	while(itTo!=path.end()){
 		switchFromPort = GetPortForwardEntry(*itFrom,*itTo);
 		std::cout<<"FlowMod From: "<<*itFrom<<" To: "<<*itTo<<" ByPort: "<<switchFromPort<<std::endl;
@@ -1124,7 +1664,137 @@ QosController::setFlowModToPathSwitch(std::list<int> path, Ipv4Address ipSrc, Ip
 		++itFrom;
 		++itTo;
 	}
+	return 1;
 }
+
+
+typedef struct {
+	uint64_t fonte;
+	std::list<std::pair<int,int>> lista;
+} fonteDestPesata;
+
+int
+QosController::ServiceManagerIPbased(int** graph, int nNode, Ipv4Address ipSrc, Ipv4Address ipDst){
+	std::list<int> weightPath;
+	//Tipo di servizio, download/upload
+	if(ExistServiceEntry(ipSrc))
+		weightPath = GetServiceEntry(ipSrc);
+	if(ExistServiceEntry(ipDst))
+		weightPath = GetServiceEntry(ipDst);
+
+	if(weightPath.size()>0){
+		uint64_t vSwitchSrc, vSwitchDst;
+		vSwitchSrc = GetIpDestEntry(ipSrc);
+		vSwitchDst = GetIpDestEntry(ipDst);
+		std::list<std::list<int>> listOfShortestPath;
+		listOfShortestPath = YenKShortestPath(graph,nNode,vSwitchSrc,vSwitchDst,weightPath.size());
+
+		std::map<int,std::list<std::pair<int,int>>> fonteDestWeight;
+
+		std::list<int>::iterator weightPathIter = weightPath.begin();
+		for(std::list<std::list<int>>::iterator itLoL = listOfShortestPath.begin(); itLoL != listOfShortestPath.end(); ++itLoL){
+			std::list<int>::iterator itFrom = (*itLoL).begin();
+			std::list<int>::iterator itTo = (*itLoL).begin();
+			++itTo;
+			while(itTo != (*itLoL).end()){
+
+				std::map<int,std::list<std::pair<int,int>>>::iterator it = fonteDestWeight.find(*itFrom);
+
+				std::pair<int,int> nuovaCoppia ((*itTo),(*weightPathIter));
+
+				if(it == fonteDestWeight.end()){
+					//Se non esiste la fonte, la inserisce ed inserisce il primo elemento
+					std::list<std::pair<int,int>> nuovaLista {nuovaCoppia};
+					std::pair<int,std::list<std::pair<int,int>>> entry ((*itFrom),nuovaLista);
+					fonteDestWeight.insert(entry);
+				}else{
+					//Se la fonte esiste, deve prendere la lista associata alla fonte e aggiungervi un elemento nuovo
+					int copyOfFonte = it->first;
+					std::list<std::pair<int,int>> copyOfList = it->second;
+					copyOfList.push_front(nuovaCoppia);
+					std::pair<int,std::list<std::pair<int,int>>> entry (copyOfFonte,copyOfList);
+					//Sovrascrive al dato precedentemente contenuto
+					fonteDestWeight.erase(it);
+					fonteDestWeight.insert(entry);
+				}
+				++itFrom;
+				++itTo;
+			}
+			++weightPathIter;
+		}
+
+
+		std::map<int,std::list<std::pair<int,int>>>::iterator FDWiter;
+		for(FDWiter = fonteDestWeight.begin(); FDWiter != fonteDestWeight.end(); ++FDWiter){
+			std::ostringstream groupEntry;
+			int fonteAttuale = (FDWiter->first);
+			groupEntry << "group-mod cmd=add,type=sel,group="<<group_id;
+			std::list<std::pair<int,int>> listaAttuale (FDWiter->second);
+			for(std::list<std::pair<int,int>>::iterator iter = listaAttuale.begin(); iter != listaAttuale.end(); ++iter){
+
+				groupEntry<< " weight=" << (*iter).second //second è il peso
+						<< ",port=" << "any"
+						<< ",group=" << "any"
+						<< " output=" << GetPortForwardEntry(fonteAttuale,(*iter).first); //first è la destinazione
+			}
+			std::cout<<groupEntry.str()<<std::endl;
+			DpctlExecute(FDWiter->first,groupEntry.str()); // first è lo switch
+			DpctlExecute(FDWiter->first,"flow-mod cmd=add,table=0,prio=20 "
+							"eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1,ip_dst=10.1.3.2 write:group=1");
+		}
+	}else{
+
+	}
+	group_id++;
+	return 1;
+}
+
+/*Backupt ServiceManager Funzionante circa fa fonte*/
+/*
+ std::list<int> weightPath;
+	//Tipo di servizio, download/upload
+	if(ExistServiceEntry(ipSrc))
+		weightPath = GetServiceEntry(ipSrc);
+	if(ExistServiceEntry(ipDst))
+		weightPath = GetServiceEntry(ipDst);
+
+	if(weightPath.size()>0){
+		uint64_t vSwitchSrc, vSwitchDst;
+		vSwitchSrc = GetIpDestEntry(ipSrc);
+		vSwitchDst = GetIpDestEntry(ipDst);
+		std::list<std::list<int>> listOfShortestPath;
+		listOfShortestPath = YenKShortestPath(graph,nNode,vSwitchSrc,vSwitchDst,weightPath.size());
+
+		std::list<int>::iterator weightPathIter = weightPath.begin();
+		std::ostringstream groupEntry;
+		groupEntry << "group-mod cmd=add,type=sel,group="<<group_id;
+		for(std::list<std::list<int>>::iterator itr = listOfShortestPath.begin(); itr != listOfShortestPath.end(); ++itr){
+			//Per ogni shortest path devo imporre la regola dei gruppi
+			std::list<int>::iterator itrFrom = (*itr).begin();
+			std::list<int>::iterator itrTo = (*itr).begin();
+			++itrTo;
+
+			//Creo multi regole per sel in base a quello che mi dice il weightPath
+			groupEntry<< " weight=" << (*weightPathIter)
+													  << ",port=" << "any"
+													  << ",group=" << "any"
+													  << " output=" << GetPortForwardEntry((*itrFrom),(*itrTo));
+			++weightPathIter;
+		}
+		std::cout<<"lunghezza weightPath = "<< weightPath.size() <<std::endl;
+		std::cout<<groupEntry.str()<<std::endl;
+		DpctlExecute(vSwitchSrc,groupEntry.str());
+		DpctlExecute(GetRemoteSwitch((*itrFrom)),"flow-mod cmd=add,table=0,prio=20 "
+				"eth_type=0x0800,ip_proto=17,ip_src=10.1.2.1,ip_dst=10.1.3.2 write:group=1");
+
+		group_id++;
+
+	}else{
+
+	}
+	return 1;
+ */
+
 
 
 
