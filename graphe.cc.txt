@@ -1,0 +1,876 @@
+/*
+ * graphe.cc
+ *
+ *  Created on: 29 mag 2020
+ *      Author: openflow
+ */
+
+#include "graphe.h"
+#include <iostream>
+
+using namespace ns3;
+
+/*
+ * Link costructor declaration
+ */
+Link::Link(){
+	this->byNode.first=0;
+	this->byNode.second=0;
+	this->switchPort=0;
+	this->cost=0;
+	this->maxCapabiliti=0;
+	this->usageCapabiliti=0;
+}
+Link::Link(uint64_t from, uint64_t to, uint64_t switchPort, uint64_t cost){
+	this->byNode.first=from;
+	this->byNode.second=to;
+	this->switchPort=switchPort;
+	this->cost=cost;
+	this->maxCapabiliti=0;
+	this->usageCapabiliti=0;
+}
+
+/*
+ * Link function declaration
+ */
+void
+Link::modifyCost(uint64_t cost){
+	this->cost=cost;
+}
+
+void
+Link::setMaxCapabiliti(uint64_t maxLinkCapabiliti){
+	this->maxCapabiliti = maxLinkCapabiliti;
+}
+
+bool
+Link::addUsageCapabiliti(uint64_t addCapabiliti){
+	uint64_t sumCapabiliti = this->usageCapabiliti + addCapabiliti;
+	if(sumCapabiliti>maxCapabiliti)
+		return false;
+	this->usageCapabiliti = sumCapabiliti;
+	return true;
+}
+
+bool
+Link::rmvUsageCapabiliti(uint64_t subCapabiliti){
+	uint64_t sumCapabiliti = this->usageCapabiliti - subCapabiliti;
+	if(sumCapabiliti <= 0){
+		this->usageCapabiliti=0;
+	}
+	return true;
+}
+
+std::list<Link>
+NodeGraphe::getLinksLink(){
+	std::list<Link> result;
+	NodeLinks::iterator it;
+	for(it = this->nodeLinks.begin(); it!=this->nodeLinks.end(); ++it){
+		result.push_front(it->second);
+	}
+	return result;
+}
+uint64_t
+Link::getCost(){
+	return this->cost;
+}
+
+uint64_t
+Link::getMaxCapability(){
+	return this->maxCapabiliti;
+}
+
+uint64_t
+Link::getActualCapability(){
+	return this->usageCapabiliti;
+}
+
+uint64_t
+Link::getPort(){
+	return this->switchPort;
+}
+
+std::pair<uint64_t,uint64_t>
+Link::getByNode(){
+	return this->byNode;
+}
+
+/*
+ * Node costructor declaration
+ */
+NodeGraphe::NodeGraphe(uint64_t nodeId){
+	this->nodeId = nodeId;
+}
+
+/*
+ * Node function declaration
+ */
+bool
+NodeGraphe::addLink(Link link){
+	std::pair<std::pair<uint64_t,uint64_t>,Link> entry (link.getByNode(),link);
+	std::pair<NodeLinks::iterator,bool> ret;
+	ret = this->nodeLinks.insert(entry);
+	if(ret.second == true){
+		std::cout<<"Aggiunto Link di un nodo"<<std::endl;
+		this->nLinks++;
+		return true;
+	}else{
+		this->nodeLinks.erase(ret.first);
+		ret = this->nodeLinks.insert(entry);
+		if(ret.second ==true){
+			std::cout<<"Modificato Link di un nodo"<<std::endl;
+			return true;
+		}
+	}
+	return false;
+}
+
+Link
+NodeGraphe::getLinkCopy(std::pair<uint64_t,uint64_t> link){
+	NodeLinks::iterator itr;
+	itr = nodeLinks.find(link);
+	if(itr != nodeLinks.end()){
+		return itr->second;
+	}
+	Link a;
+	return a;
+}
+
+Link
+NodeGraphe::rmvLink(std::pair<uint64_t,uint64_t> linkKey){
+	NodeLinks::iterator itr;
+	itr = nodeLinks.find(linkKey);
+	if(itr != nodeLinks.end()){
+		nodeLinks.erase(itr);
+		this->nLinks--;
+		return itr->second;
+	}
+	Link a;
+	return a;
+}
+
+std::map<std::pair<uint64_t,uint64_t>,Link>
+NodeGraphe::getLinks(){
+	return this->nodeLinks;
+}
+
+Graphe::Graphe(){
+	this->nNodes=0;
+	this->nLinks=0;
+	this->nodesMap.clear();
+	this->linkMap.clear();
+}
+
+std::map<uint64_t,NodeGraphe>
+Graphe::getNodesMap(){
+	return this->nodesMap;
+}
+
+std::list<uint64_t>
+Graphe::getNodeList(){
+	std::list<uint64_t> result;
+	NodesMap::iterator it;
+	for(it = this->nodesMap.begin(); it != this->nodesMap.end(); ++it){
+		result.push_front(it->first);
+	}
+	return result;
+}
+
+bool
+Graphe::addNode(uint64_t nodeId){
+	std::cout<<"Aggiunto switch come nodo del grafo"<<std::endl;
+	std::cout<<"IdDatapath/NodeId: "<< nodeId<<std::endl;
+	this->nNodes++;
+	NodeGraphe newNode(nodeId);
+	NodeMapEntry entry (nodeId,newNode);
+	std::pair<NodesMap::iterator,bool> ret;
+	ret = this->nodesMap.insert(entry);
+	if(ret.second == true){
+		return true;
+	}
+	return false;
+}
+
+bool
+Graphe::existNode(uint64_t nodeId){
+	if(this->nodesMap.find(nodeId) != this->nodesMap.end())
+		return true;
+	return false;
+}
+
+bool
+Graphe::addLink(Link link){
+	/*
+	 * Insert into Graphe Map of node
+	 */
+	LinkMapEntry entry (link.getByNode(),link);
+	std::pair<LinksMap::iterator,bool> rel;
+	rel = this->linkMap.insert(entry);
+	if(rel.second == true){
+		/*
+		 * Insert into Node Link Map
+		 */
+		std::cout<<"Aggiunto link ad un nodo"<<std::endl;
+		std::cout<<"Nodo src: "<<link.getByNode().first << " Nodo dst: "<<link.getByNode().second<<std::endl;
+		std::cout<<"Porta di Nodo src: "<<link.getPort()<<std::endl;
+		this->nLinks++;
+	}else{
+		this->linkMap.erase(rel.first);
+		rel = this->linkMap.insert(entry);
+		if(rel.second){
+			std::cout<<"AGGIORNATO link ad un nodo"<<std::endl;
+			std::cout<<"Nodo src: "<<link.getByNode().first << " Nodo dst: "<<link.getByNode().second<<std::endl;
+			std::cout<<"Porta di Nodo src: "<<link.getPort()<<std::endl;
+		}
+	}
+	uint64_t fromNode = link.getByNode().first;
+	this->nodesMap.find(fromNode)->second.addLink(link);
+	return true;
+}
+
+bool
+Graphe::rmvLink(std::pair<uint64_t,uint64_t> link){
+	LinksMap::iterator iterLink = this->linkMap.find(link);
+
+	if(iterLink != linkMap.end()){
+		//Link erasedLink = iterLink->second;
+		uint64_t fromNode = iterLink->first.first;
+
+		/*
+		 * Erase the link in the Nodo LinksMap
+		 */
+		NodesMap::iterator iterNode = this->nodesMap.find(fromNode);
+		NodeGraphe nodoAttuale = iterNode->second;
+
+		/*
+		 * Erase the Link from the Graphe LinkMap
+		 */
+		//NodeLinks::iterator a = nodoAttuale.nodeLinks.find(iterLink->first);
+
+		linkMap.erase(iterLink);
+		this->nLinks--;
+		//delete erasedLink;
+		return true;
+	}
+	return false;
+}
+
+Link
+Graphe::rmvLinkVirtual(std::pair<uint64_t,uint64_t> link){
+	LinksMap::iterator iterLink = this->linkMap.find(link);
+
+	std::cout<<"Sto cercando di eliminare"<<std::endl;
+	if(iterLink != this->linkMap.end()){
+
+
+		Link erasedLink = iterLink->second;
+		uint64_t fromNode = iterLink->first.first;
+
+		/*
+		std::pair<std::pair<uint64_t,uint64_t>,Link> entry (erasedLink.getByNode(),erasedLink);
+		this->erasedLink.insert(entry);
+		 */
+		/*
+		 * Erase the link in the Nodo LinksMap
+		 */
+		NodesMap::iterator iterNode = this->nodesMap.find(fromNode);
+		iterNode->second.rmvLink(iterLink->first);
+
+		/*
+		 * Erase the Link from the Graphe LinkMap
+		 */
+		linkMap.erase(iterLink);
+		this->nLinks--;
+		return erasedLink;
+		//return noLink;
+	}
+	return Link();
+}
+
+void
+Graphe::modifyLinkCapability(std::pair<uint64_t,uint64_t>,uint32_t cap){
+
+	//this->getLinksMap().find();
+}
+
+
+
+bool
+Graphe::rmvNode(uint64_t nodeId){
+	NodesMap::iterator iterNodes = nodesMap.find(nodeId);
+	if(iterNodes != nodesMap.end()){
+		NodeGraphe erasedNode = iterNodes->second;
+		std::map<std::pair<uint64_t,uint64_t>,Link>::iterator itr;
+		for(itr = erasedNode.getLinks().begin(); itr != erasedNode.getLinks().end(); ++itr){
+			rmvLink((itr->second,itr->first));
+			//delete itr->second;
+		}
+		this->nodesMap.erase(iterNodes);
+		erasedNode.getLinks().clear();
+		//delete erasedNode;
+		return true;
+	}
+	return false;
+}
+
+std::list<Link>
+Graphe::rmvNodeVirtual(uint64_t nodeId){
+	NodesMap::iterator iterNodes = nodesMap.find(nodeId);
+	std::list<Link> listErasedLink;
+	if(iterNodes != nodesMap.end()){
+		std::list<Link> lLink = iterNodes->second.getLinksLink();
+		for(std::list<Link>::iterator itr = lLink.begin(); itr != lLink.end(); ++itr){
+			//Controlla che siano o no già eliminati
+			//if(this->erasedLink.find(itr->getByNode()) == this->erasedLink.end()){ //allora posso eliminare
+			//Aggiungo il link da eliminare a erasedLink del grafo
+			//this->erasedLink.insert();
+			//Elimino i due link
+			listErasedLink.push_front(rmvLinkVirtual(itr->getByNode()));
+			std::pair<uint64_t,uint64_t> t ((itr->getByNode().second),(itr->getByNode().first));
+			listErasedLink.push_front(rmvLinkVirtual(t));
+			//}else{
+
+			//}
+		}
+		return listErasedLink;
+	}
+	std::list<Link> empty;
+	return empty;
+}
+
+bool
+Graphe::existLink(uint64_t fromNode, uint64_t toNode){
+	std::pair<uint64_t,uint64_t> linkKey (fromNode,toNode);
+	if(this->linkMap.find(linkKey) != this->linkMap.end())
+		return true;
+	return false;
+}
+
+uint64_t
+Graphe::getLinkPortSwitch(uint64_t fromNode, uint64_t toNode){
+	std::pair<uint64_t,uint64_t> linkKey (fromNode,toNode);
+	LinksMap::iterator rel = this->linkMap.find(linkKey);
+	if(rel != this->linkMap.end())
+		return rel->second.getPort();
+	return 0;
+}
+
+Link
+Graphe::getLink(std::pair<uint64_t,uint64_t> linkKey){
+	return this->linkMap.find(linkKey)->second;
+}
+
+NodeGraphe
+Graphe::getNode(uint64_t nodeId){
+	return this->nodesMap.find(nodeId)->second;
+}
+
+std::list<Link>
+Graphe::getLinkList(){
+	std::list<Link> result;
+	LinksMap::iterator it;
+	for(it = this->linkMap.begin(); it != this->linkMap.end(); ++it){
+		result.push_front(it->second);
+	}
+	return result;
+}
+
+uint64_t
+Graphe::getNNodes(){
+	return this->nNodes;
+}
+
+std::map<std::pair<uint64_t,uint64_t>,Link>
+Graphe::getLinksMap(){
+	return this->linkMap;
+}
+
+void
+OrderedListLink::orderedInsert(Link link){
+	OrderedLink::iterator it = this->orderedList.begin();
+	if(this->orderedList.empty()){
+		this->orderedList.push_front(link);
+	}
+	else{
+		if(link.getCost()<=(*it).getCost()){
+			this->orderedList.push_front(link);
+		}else{
+			if(link.getCost()>=(this->orderedList.back().getCost())){
+				this->orderedList.push_back(link);
+			}else{
+				while(link.getCost()<(*it).getCost()){
+					++it;
+				}
+				this->orderedList.insert(it,link);
+			}
+		}
+	}
+}
+
+void
+OrderedListLink::multiOrderedInsert(std::list<Link> links){
+	std::list<Link>::iterator itLinks;
+	for(itLinks = links.begin(); itLinks != links.end(); ++itLinks){
+		this->orderedInsert(*itLinks);
+	}
+	return ;
+}
+
+Link
+OrderedListLink::lowElement(){
+	OrderedLink::iterator it = this->orderedList.begin();
+	Link res = (*it);
+	this->orderedList.erase(it);
+	return res;
+}
+
+Link
+OrderedListLink::lowElementCopy(){
+	OrderedLink::iterator it = this->orderedList.begin();
+	return (*it);
+}
+
+bool
+OrderedListLink::emptyLinkList(){
+	return this->orderedList.empty();
+}
+
+Link
+OrderedListLink::pop_front(){
+	OrderedLink::iterator it;
+	it = this->orderedList.begin();
+	Link ris = (*it);
+	this->orderedList.erase(it);
+	return ris;
+}
+
+bool
+OrderedListLink::isIn(uint64_t nodeId,std::list<uint64_t> list){
+	std::list<uint64_t>::iterator it;
+	it = list.begin();
+	while(it != list.end()){
+		if((*it)==nodeId){
+			return true;
+		}
+		++it;
+	}
+	return false;
+}
+
+void
+dijkstraResult::addFirst(uint64_t from){
+	std::pair<uint64_t,uint64_t> dati (0,0);
+	std::pair<uint64_t,std::pair<uint64_t,uint64_t>> entry (from,dati);
+	std::pair<Struttura::iterator,bool> ret;
+	ret = this->res.insert(entry);
+	if (ret.second == true)
+	{
+		return ;
+	}
+}
+
+void
+dijkstraResult::update(uint64_t from, uint64_t to, uint64_t nextWeight){
+	//weight fino a from
+	Struttura::iterator itr;
+	itr = this->res.find(from);
+	if(itr!=this->res.end()){
+		uint64_t weightAtFrom = itr->second.second;
+		uint64_t newWeight = (weightAtFrom+nextWeight);
+		//Cerco il to, se esiste
+		Struttura::iterator itr2;
+		itr2= this->res.find(to);
+		if(itr2 != this->res.end()){//se esiste già, lo potrei dover aggiornare
+			uint64_t weightAtTo = itr2->second.second;
+			if(newWeight<weightAtTo){//ho trovato un weight minore
+				//devo sostituire precedente e nuovo weight
+				std::pair<uint64_t,uint64_t> dati (from,newWeight);
+				std::pair<uint64_t,std::pair<uint64_t,uint64_t>> entry (to,dati);
+				std::pair<Struttura::iterator,bool> ret;
+				ret = this->res.insert(entry);
+				if (ret.second == true)
+				{
+					return ;
+				}
+			}else{//ha un weight maggiore, e non devo aggiornare nulla
+				return ;
+			}
+		}else{//se non esiste lo devo inserire
+			std::pair<uint64_t,uint64_t> dati (from,newWeight);
+			std::pair<uint64_t,std::pair<uint64_t,uint64_t>> entry (to, dati);
+			std::pair<Struttura::iterator,bool> ret;
+			ret = this->res.insert(entry);
+			if (ret.second == true)
+			{
+				return ;
+			}
+		}
+	}
+	return ;
+}
+
+std::list<uint64_t>
+dijkstraResult::pathBy(uint64_t from,uint64_t to){
+	std::list<uint64_t> result;
+
+	std::cout<<"Path"<<std::endl;
+
+
+	Struttura::iterator ret;
+	ret = this->res.find (to);
+	if (ret != this->res.end())
+	{
+		std::cout<<to<<std::endl;
+		result.push_front(to);
+		while(ret->first != from){
+			result.push_front(ret->second.first);
+			std::cout<<ret->second.first<<std::endl;
+			ret = this->res.find (ret->second.first);
+		}
+	}
+
+	std::cout<<"Path da sorgente a destinazione"<<std::endl;
+	std::list<uint64_t>::iterator r;
+	for(r = result.begin(); r != result.end(); ++r){
+		std::cout<<*r<<std::endl;
+	}
+
+	return result;
+}
+
+std::list<uint64_t>
+dijkstraResult::shortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch){
+	dijkstraResult dijRes;
+	List visit;
+	OrderedListLink orderedLinkList;
+
+	std::cout<<"ActualNode: "<<fromSwitch<<std::endl;
+	uint64_t actualNode = fromSwitch;
+	dijRes.addFirst(actualNode);
+
+	std::list<Link> links = g.getNode(actualNode).getLinksLink();
+
+	orderedLinkList.multiOrderedInsert(links);
+
+	while((visit.size()<=g.getNNodes())&&(actualNode != toSwitch)&&(actualNode!=0)){
+		visit.push_front(actualNode);
+		//Mi prendo il prossimo nodo,non vistiato, che visiterò dopo
+		//è infatti il primo elemento di una lista ordinata di link
+		uint64_t nextNode = 0;
+		Link l;
+		if(!orderedLinkList.emptyLinkList()){
+			l = orderedLinkList.lowElementCopy();
+			while((orderedLinkList.isIn(l.getByNode().second,visit))&&(!orderedLinkList.emptyLinkList())){
+				orderedLinkList.pop_front();
+				l = orderedLinkList.lowElementCopy();
+			}
+		}
+		if(!orderedLinkList.emptyLinkList())
+			nextNode = l.getByNode().second;
+
+		std::cout<<"nextNode: "<< nextNode<<std::endl;
+		//Aggiorno tutta la struttura dati in base all'attuale nodo analizzato
+		while((!orderedLinkList.emptyLinkList())&&(nextNode!=0)){
+			Link actualLink = orderedLinkList.pop_front();
+			uint64_t linkDest = actualLink.getByNode().second;
+			uint64_t linkWeight = actualLink.getCost();
+			dijRes.update(actualNode,linkDest,linkWeight);
+		}
+		//preparo per analizzare il prossimo nodo
+		actualNode = nextNode;
+		if(nextNode!=0)
+			orderedLinkList.multiOrderedInsert(g.getNode(actualNode).getLinksLink());
+	}
+	return dijRes.pathBy(fromSwitch,toSwitch);
+}
+
+uint64_t
+YensSupport::pathCost(Graphe g, sPath path){
+	typedef std::map<std::pair<uint64_t,uint64_t>,Link> LinksMap;
+	sPath::iterator i;
+	sPath::iterator j= path.begin();
+	++j;
+	LinksMap linksMap = g.getLinksMap();
+	uint64_t tot=0;
+	for(i = path.begin(); i != (--(path.end())); ++i){
+		std::pair<uint64_t,uint64_t> entry (*i,*j);
+		LinksMap::iterator ret = linksMap.find(entry);
+		std::cout<<"Costo dei link: "<<*i<<*j<<std::endl;
+		if(ret != linksMap.end()){
+			tot = tot + ret->second.getCost();
+			std::cout<<tot<<std::endl;
+			std::cout<<ret->second.getCost()<<std::endl;
+		}
+		++j;
+	}
+	std::cout<<"Costo del path: "<< tot <<std::endl;
+	return tot;
+}
+
+void
+YensSupport::orderderInsertContainer(Graphe g, sPath path){
+	mPath::iterator it = this->container.begin();
+	uint64_t pathCost = this->pathCost(g,path);
+	std::pair<uint64_t,sPath> entry (pathCost,path);
+
+	if(pathCost<this->container.front().first){
+		this->container.push_front(entry);
+	}
+	else{
+		if(pathCost>this->container.back().first){
+			this->container.push_back(entry);
+		}else{
+			while(pathCost<(*it).first){
+				++it;
+			}
+			this->container.insert(it,entry);
+		}
+	}
+}
+
+void
+YensSupport::orderderInsertResult(Graphe g, sPath path){
+	mPath::iterator it = this->mResult.begin();
+	uint64_t pathCost = this->pathCost(g,path);
+	std::pair<uint64_t,sPath> entry (pathCost,path);
+
+	if(pathCost<this->mResult.front().first){
+		this->mResult.push_front(entry);
+	}
+	else{
+		if(pathCost>this->mResult.back().first){
+			this->mResult.push_back(entry);
+		}else{
+			while(pathCost<(*it).first){
+				++it;
+			}
+			this->mResult.insert(it,entry);
+		}
+	}
+
+}
+
+std::list<uint64_t>
+YensSupport::getTopPath(){
+	mPath::iterator i = this->mResult.begin();
+	sPath result = (*i).second;
+	this->mResult.pop_front();
+	return result;
+}
+
+void
+YensSupport::pushLink(Link link){
+	this->linkContainer.push_front(link);
+}
+Link
+YensSupport::popLink(){
+	lLink::iterator i = this->linkContainer.begin();
+	Link link = *i;
+	this->linkContainer.pop_front();
+	return link;
+}
+
+std::map<std::pair<uint64_t,uint64_t>,Link>
+YensSupport::getLinkLeaveBy(Graphe g, uint64_t nodeId){
+	std::cout<<"getLinkLeaveBy"<<std::endl;
+	LinkMap lMap;
+	for(resultPath::iterator i = this->result.begin(); i != this->result.end(); ++i){
+		std::cout<<"Path da analizzare"<<std::endl;
+		for(sPath::iterator j = (*i).begin(); j != (*i).end(); ++j)
+			std::cout<<(*j)<<std::endl;
+		sPath::iterator k = (*i).begin();
+		for(sPath::iterator j = ((*i).begin()); j != ((*i).end()); ++j){
+			++k;
+			if(((*j)==nodeId)&&(k!=(*i).end())){
+				std::pair<uint64_t,uint64_t> cop1 ((*j),(*k));
+				std::pair<uint64_t,uint64_t> cop2 ((*k),(*j));
+				std::cout<<"Link trovati da eliminare da altri path"<<std::endl;
+				std::cout<<(*j)<<" "<<(*k)<<std::endl;
+				std::cout<<(*k)<<" "<<(*j)<<std::endl;
+				Link fT,tF;
+				fT = g.getLink(cop1);
+				tF = g.getLink(cop2);
+				std::pair<std::pair<uint64_t,uint64_t>,Link> entry1 (cop1,fT);
+				std::pair<std::pair<uint64_t,uint64_t>,Link> entry2 (cop2,tF);
+				lMap.insert(entry1);
+				//lMap.insert(entry2);
+			}
+		}
+	}
+	return lMap;
+}
+
+Graphe
+YensSupport::delNodeFromRootPath(Graphe g, sPath rootPath, uint64_t spurNode){
+	sPath::iterator i = rootPath.begin();
+	lLink link;
+	while((*i) != spurNode){
+		link = g.rmvNodeVirtual(*i);
+		for(lLink::iterator j = link.begin(); j != link.end(); ++j){
+			pushLink((*j));
+		}
+		++i;
+	}
+	return g;
+}
+
+
+Graphe
+YensSupport::delLinkFromPreviousMultiPath(Graphe g, uint64_t nodeId){
+	LinkMap l = this->getLinkLeaveBy(g,nodeId);
+	std::cout<<"link da eliminare dei vecchi path"<<std::endl;
+	for(LinkMap::iterator i = l.begin(); i != l.end(); ++i){
+		std::pair<uint64_t,uint64_t> entry ((*i).second.getByNode().first,(*i).second.getByNode().second);
+		std::cout<<"Link in eliminazione: "<<entry.first <<" "<<entry.second<<std::endl;
+		pushLink(g.rmvLinkVirtual(entry));
+	}
+	return g;
+}
+
+bool
+YensSupport::existPath(sPath path){
+
+	for(resultPath::iterator i = this->result.begin(); i != this->result.end(); ++i){
+		sPath::iterator j = (*i).begin();
+		sPath::iterator k = path.begin();
+		bool match = true;
+		while((j != (*i).end())&&(k != path.end())&&(match)){
+			if((*j)!=(*k)){
+				match = false;
+			}
+			++j;
+			++k;
+		}
+		if(match)
+			return true;
+	}
+	return false;
+}
+
+Graphe
+YensSupport::grapheRestore(Graphe g){
+	for(lLink::iterator i = this->linkContainer.begin(); i != this->linkContainer.end(); ++i){
+		g.addLink((*i));
+	}
+	this->linkContainer.clear();
+	return g;
+}
+
+std::list<uint64_t>
+YensSupport::pathConcat(sPath front, sPath back){
+	back.pop_front();
+	for(sPath::iterator i = back.begin(); i != back.end(); ++i){
+		front.push_back((*i));
+	}
+	return front;
+}
+
+std::list<uint64_t>
+YensSupport::pathFromBeginToI(sPath path, uint64_t i){
+	sPath result;
+	sPath::iterator it = result.begin();
+	sPath::iterator itPath = path.begin();
+	uint64_t j = 0;
+	while(j<=i){
+		result.insert(it,(*itPath));
+		//++it; si autoincrementa da se, non serve
+		++itPath;
+		j++;
+	}
+	return result;
+}
+
+uint64_t
+YensSupport::nodeAtPositionI(sPath path, uint64_t i){
+	uint64_t j=0;
+	sPath::iterator it = path.begin();
+	while(j<i){
+		++it;
+		j++;
+	}
+	return (*it);
+}
+
+bool
+YensSupport::emptyContainer(){
+	return this->container.empty();
+}
+/*
+std::list<std::list<uint64_t>>
+YensSupport::getKShortestPath(){
+	resultPath result;
+	for(mPath::iterator i = this->result.begin(); i != this->result.end(); ++i){
+		result.push_back((*i).second);
+	}
+	return result;
+}*/
+
+std::list<std::list<uint64_t>>
+YensSupport::kShortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch, uint64_t nPath){
+	Graphe backupG = g;
+	dijkstraResult dijk;
+	this->result.push_front(dijk.shortestPath(g,fromSwitch,toSwitch));
+	resultPath::iterator iD = this->result.begin();
+
+	uint64_t k=1;//1 è il path trovato e sto cercando almeno il secondo
+
+	while(k<(nPath)){
+		sPath::iterator iIter = (*iD).begin();
+		uint64_t i = 0;
+		while(iIter != (--(*iD).end())){
+			uint64_t spurNode = this->nodeAtPositionI((*iD),i);
+			sPath rootPath = this->pathFromBeginToI((*iD),i);
+			for(sPath::iterator iter = rootPath.begin(); iter != rootPath.end(); ++iter){
+				std::cout<<(*iter)<<std::endl;
+			}
+
+			g = this->delLinkFromPreviousMultiPath(g,spurNode);
+
+			g = this->delNodeFromRootPath(g,rootPath,spurNode);
+
+			sPath spurPath = dijk.shortestPath(g,spurNode,toSwitch);
+
+			if(!spurPath.empty()){ //se non è vuoto, ho trovato path alternativi, altrimenti avanzo di spurNode
+
+				sPath totalPath = this->pathConcat(rootPath,spurPath);
+
+				for(sPath::iterator j = totalPath.begin(); j != totalPath.end(); ++j)
+					std::cout<<(*j)<<std::endl;
+				if(!this->existPath(totalPath)){
+					this->orderderInsertResult(backupG,totalPath);
+				}else{
+				}
+			}
+			g = this->grapheRestore(g);
+
+			i++;
+			++iIter;
+		}
+		std::cout<<"----------------------------------"<<std::endl;
+		if(!this->mResult.empty()){
+			this->result.push_back(this->getTopPath());
+		}else{
+			resultPath r = this->result;
+			for(std::list<std::list<uint64_t>>::iterator i = r.begin(); i != r.end(); ++i){
+				std::cout<<"Path"<<std::endl;
+				for(std::list<uint64_t>::iterator j = (*i).begin(); j != (*i).end(); ++j)
+					std::cout<<(*j)<<std::endl;
+			}
+			return this->result;
+		}
+		++iD;
+		k++;
+	}
+	resultPath r = this->result;
+	for(std::list<std::list<uint64_t>>::iterator i = r.begin(); i != r.end(); ++i){
+		std::cout<<"Path"<<std::endl;
+		for(std::list<uint64_t>::iterator j = (*i).begin(); j != (*i).end(); ++j)
+			std::cout<<(*j)<<std::endl;
+	}
+
+
+	return this->result;
+}
+
+
+

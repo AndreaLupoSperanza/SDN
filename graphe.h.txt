@@ -1,0 +1,257 @@
+/*
+ * grafo.h
+ *
+ *  Created on: 29 mag 2020
+ *      Author: openflow
+ */
+
+#ifndef SRC_OFSWITCH13_EXAMPLES_OFSWITCH13_QOS_CONTROLLER_GRAPHE_H_
+#define SRC_OFSWITCH13_EXAMPLES_OFSWITCH13_QOS_CONTROLLER_GRAPHE_H_
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <map>
+#include <list>
+#include "ns3/ipv4-address.h"
+
+namespace ns3 {
+
+/*
+class Flow{
+public:
+private:
+	Ipv4Address sourceIp;
+	Ipv4Address destinationIp;
+	uint16_t sourcePort;
+	uint16_t destinationPort;
+	uint16_t protocolId;
+};
+ */
+
+class Link{
+public:
+	Link();
+	Link(uint64_t from, uint64_t to, uint64_t switchPort, uint64_t cost);
+	void modifyCost(uint64_t cost);
+	void setMaxCapabiliti(uint64_t maxLinkCapabiliti);
+	bool addUsageCapabiliti(uint64_t addCapabiliti);
+	bool rmvUsageCapabiliti(uint64_t subCapabiliti);
+	uint64_t getPort();
+	std::pair<uint64_t,uint64_t> getByNode();
+	uint64_t getCost();
+	uint64_t getMaxCapability();
+	uint64_t getActualCapability();
+private:
+	/*
+	 * Type definition
+	 */
+	typedef std::pair<uint64_t,uint64_t> FromToLink;
+	//typedef std::list<Flow> PassedByFlowList;
+	/*
+	 * Variable of Link definition
+	 */
+	uint64_t cost;
+	FromToLink byNode;
+	uint64_t switchPort;
+	uint64_t maxCapabiliti;
+	uint64_t usageCapabiliti;
+	//PassedByFlowList passedByFlow;
+};
+
+class NodeGraphe{
+public:
+	NodeGraphe(uint64_t nodeId);
+	bool addLink(Link link);
+	Link getLinkCopy(std::pair<uint64_t,uint64_t> link);
+	Link rmvLink(std::pair<uint64_t,uint64_t> link);
+	std::map<std::pair<uint64_t,uint64_t>,Link> getLinks();
+	std::list<Link> getLinksLink();
+private:
+	/*
+	 * Type declaration
+	 */
+	typedef std::map<std::pair<uint64_t,uint64_t>,Link> NodeLinks;
+	/*
+	 * Variable declaration
+	 */
+	uint64_t nodeId;
+	uint64_t nLinks;
+	NodeLinks nodeLinks;
+};
+
+class Graphe {
+public:
+	/*
+	 * Type Definition
+	 */
+	typedef std::pair<uint64_t,uint64_t> couple;
+	typedef std::map<uint64_t,NodeGraphe> NodesMap;
+	typedef std::pair<uint64_t,NodeGraphe> NodeMapEntry;
+	typedef std::map<std::pair<uint64_t,uint64_t>,Link> LinksMap;
+	typedef std::pair<std::pair<uint64_t,uint64_t>,Link> LinkMapEntry;
+
+	Graphe();
+	/*
+	 * Crea un nuovo nodo e lo aggiunge al grafo (i link andranno creari successivamente)
+	 */
+	bool addNode(uint64_t nodeId);
+	/*
+	 *
+	 */
+	bool existNode(uint64_t nodeId);
+	/*
+	 *
+	 */
+	bool addLink(Link link);
+	/*
+	 *
+	 */
+	void modifyLinkCapability(std::pair<uint64_t,uint64_t>,uint32_t cap);
+	/*
+	 *
+	 */
+	bool rmvNode(uint64_t nodeId);
+	/*
+	 * Elimina i link del nodo, ma NON lo rimuove, e restituisce i link eliminati
+	 */
+	std::list<Link> rmvNodeVirtual(uint64_t nodeId);
+	/*
+	 *
+	 */
+	bool rmvLink(std::pair<uint64_t,uint64_t> byLink);
+	/*
+	 *
+	 */
+	Link rmvLinkVirtual(std::pair<uint64_t,uint64_t> link);
+	/*
+	 *
+	 */
+	bool existLink(uint64_t fromNode, uint64_t toNode);
+	/*
+	 *
+	 */
+	uint64_t getLinkPortSwitch(uint64_t fromNode, uint64_t toNode);
+	/*
+	 *
+	 */
+	Link getLink(std::pair<uint64_t,uint64_t> linkKey);
+	/*
+	 *
+	 */
+	std::list<Link> getLinkList();
+	/*
+	 * Ritorna un puntatore al nodo richiesto
+	 */
+	NodeGraphe getNode(uint64_t nodeId);
+	/*
+	 *
+	 */
+	NodesMap getNodesMap();
+	/*
+	 *
+	 */
+	LinksMap getLinksMap();
+	/*
+	 *
+	 */
+	std::list<uint64_t> getNodeList();
+	/*
+	 *
+	 */
+	uint64_t getNNodes();
+private:
+	/*
+	 * Variable definition
+	 */
+	uint64_t nNodes;
+	uint64_t nLinks;
+	NodesMap nodesMap;
+	LinksMap linkMap;
+
+
+};
+
+class OrderedListLink{
+private:
+	typedef std::list<Link> OrderedLink;
+	OrderedLink orderedList;
+
+public:
+	void orderedInsert(Link);
+	void multiOrderedInsert(std::list<Link> links);
+	Link lowElement();
+	Link lowElementCopy();
+	bool emptyLinkList();
+	Link pop_front();
+	bool isIn(uint64_t nodeId,std::list<uint64_t> list);
+};
+
+class dijkstraResult{
+private:
+	//(idNodoFrom,(idNodoPrecedente,weightLink))
+	typedef std::map<uint64_t,std::pair<uint64_t,uint64_t>> Struttura;
+	typedef std::list<uint64_t> List;
+	Struttura res;
+public:
+	void addFirst(uint64_t from);
+	void update(uint64_t from, uint64_t to, uint64_t nextWeight);
+	std::list<uint64_t> pathBy(uint64_t from,uint64_t to);
+	std::list<uint64_t>	shortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch);
+};
+
+class YensSupport{
+private:
+	typedef std::list<uint64_t> sPath;
+	typedef std::list<std::pair<uint64_t,sPath>> mPath;
+	typedef std::list<std::list<uint64_t>> resultPath;
+	typedef std::pair<uint64_t,sPath> pair;
+	typedef std::map<std::pair<uint64_t,uint64_t>,Link> LinkMap;
+	typedef std::list<Link> lLink;
+
+	mPath container;
+	mPath mResult;
+	resultPath result;
+	lLink linkContainer;
+
+public:
+
+	void orderderInsertResult(Graphe g, sPath path);
+	void orderderInsertContainer(Graphe g, sPath path);
+	uint64_t pathCost(Graphe g, sPath path);
+	sPath getTopPath();
+	LinkMap getLinkLeaveBy(Graphe g, uint64_t nodeId);
+	Graphe delNodeFromRootPath(Graphe g, sPath rootPath, uint64_t spurNode);
+	Graphe delLinkFromPreviousMultiPath(Graphe g, uint64_t nodeId);
+	bool existPath(sPath path);
+	Graphe grapheRestore(Graphe g);
+	sPath pathConcat(sPath front, sPath back);
+	sPath pathFromBeginToI(sPath path,uint64_t i);
+	uint64_t nodeAtPositionI(sPath path, uint64_t i);
+	void pushPath(sPath path);
+	bool emptyContainer();
+
+	resultPath getKShortestPath();
+
+	void pushLink(Link p);
+	Link popLink();
+
+	lLink getLinkContainer();
+
+	resultPath kShortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch, uint64_t nPath);
+};
+
+class routerInfo{
+public:
+	Ipv4Address interno;
+	int mask;
+	Ipv4Address esterno;
+};
+
+
+
+
+}
+
+
+
+#endif /* SRC_OFSWITCH13_EXAMPLES_OFSWITCH13_QOS_CONTROLLER_GRAPHE_H_ */

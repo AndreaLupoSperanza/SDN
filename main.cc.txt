@@ -12,10 +12,13 @@
 #include <ns3/internet-module.h>
 #include <ns3/ofswitch13-module.h>
 #include <ns3/internet-apps-module.h>
+#include "ns3/bridge-module.h"
 
 #include <ns3/netanim-module.h>
 #include <ns3/mobility-module.h>
 #include <ns3/applications-module.h>
+
+#include "ns3/flow-monitor-helper.h"
 #include "ns3/on-off-helper.h"
 #include "ns3/packet-sink-helper.h"
 #include "qos-controller.h"
@@ -26,23 +29,31 @@ using namespace ns3;
 int
 main (int argc, char *argv[])
 {
+	//Analisi
+	std::string flowmonOut = "fub-qos-flowMon";
 
 	Packet::EnablePrinting ();
 
 	/*Numero Client*/
-	uint16_t nClient = 2;
+	uint16_t nHost = 3;
 	/*Numero Server*/
-	uint16_t nServer = 2;
-	uint64_t simTime = 20;
-	//il tempo di invio e ricezione deve sempre essere inferiore al tempo di simulazione
-	uint64_t timeOfSendReceive = 10;
-	uint64_t totTimeOfArpGestion = 3; //Sec delay partenza noise - t primo pacchetto UDP inviato
+	uint16_t nServer = 3;
+	uint64_t simTime = 3;
+
 	bool verbose = false;
 	bool trace = true;
 
-	std::string prot                 = "udp"; //protocollo usato per il dataNoise
-	std::string dataNoise1            = "1Mbps"; //quanto traffico deve passare
-	std::string dataNoise2            = "1Mbps";
+	std::string prot                 = "udp"; //protocollo dataNoise
+
+	std::string dataExplore 			  = "10Kbps"; //Micro Explorer Arp
+	std::string dataNoise_eMBB            = "10Mbps"; //eMBB
+	std::string dataNoise_mMTC            = "10Mbps"; //mMTC
+	std::string dataNoise_extra            = "10Mbps"; //extra
+
+	std::string rhombusLink = "100Mbps";
+
+
+	std::string linkWeight           = "1";
 
 	// Configure dedicated connections between controller and switches
 	Config::SetDefault ("ns3::OFSwitch13Helper::ChannelType", EnumValue (OFSwitch13Helper::DEDICATEDCSMA));
@@ -59,9 +70,12 @@ main (int argc, char *argv[])
 
 	// Configure command line parameters
 	CommandLine cmd;
+	cmd.AddValue ("hosts", "Number of client nodes", nHost);
 	cmd.AddValue ("simTime", "Simulation time (seconds)", simTime);
 	cmd.AddValue ("verbose", "Enable verbose output", verbose);
 	cmd.AddValue ("trace", "Enable datapath stats and pcap traces", trace);
+	//  cmd.AddValue ("dataNoise", "Data rate for Noise flow", dataNoise);
+	cmd.AddValue ("linkWeight", "Link weight for the link 1", linkWeight);
 	cmd.Parse (argc, argv);
 
 	if (verbose)
@@ -83,7 +97,7 @@ main (int argc, char *argv[])
 
 	// Create hosts nodes
 	NodeContainer hosts;
-	hosts.Create (nClient);
+	hosts.Create (nHost);
 	//Create server nodes
 	NodeContainer servers;
 	servers.Create(nServer);
@@ -91,6 +105,7 @@ main (int argc, char *argv[])
 	NodeContainer controller;
 	controller.Create(1); //un unico controller centralizzato
 
+	/*Creazione Virtual Switch OpenFlow*/
 	// Create the vSwitchOvest node
 	Ptr<Node> vSwitchOvest = CreateObject<Node> ();
 	// Create the vSwitchEst node
@@ -100,23 +115,36 @@ main (int argc, char *argv[])
 	// Create the vSwitchNord node
 	Ptr<Node> vSwitchNord = CreateObject<Node> ();
 
-	NodeContainer switchContainer= CreateObject<Node>();
-	switchContainer.Add(vSwitchOvest);
-	switchContainer.Add(vSwitchEst);
-	switchContainer.Add(vSwitchSud);
-	switchContainer.Add(vSwitchNord);
+	/*Creazione Switch L2*/
+	Ptr<Node> L2SwitchOvest = CreateObject<Node> ();
+	Ptr<Node> L2SwitchEst = CreateObject<Node> ();
+
+	//Creazione vSwitchContainer
+	NodeContainer vSwitchContainer = CreateObject<Node>();
+	vSwitchContainer.Add(vSwitchOvest);
+	vSwitchContainer.Add(vSwitchEst);
+	vSwitchContainer.Add(vSwitchSud);
+	vSwitchContainer.Add(vSwitchNord);
+
+	NodeContainer L2SwitchContainer = CreateObject<Node>();
+	L2SwitchContainer.Add(L2SwitchOvest);
+	L2SwitchContainer.Add(L2SwitchEst);
 
 	CsmaHelper csmaHelper;
+
+	//Creazione porte di rete vSwitch
 	NetDeviceContainer vSwitchOvestPorts, vSwitchEstPorts, vSwitchSudPorts, vSwitchNordPorts;
+	//Creazione porte di rete L2Switch
+	NetDeviceContainer L2SwitchOvestPorts, L2SwitchEstPorts;
 
 	NetDeviceContainer link;
 
 	/*---------------Connessione tra vSwitchOvest e vSwitchNord--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchOvest and vSwitchNord with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchOvest and vSwitchNord with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchOvest,vSwitchNord));
 	vSwitchOvestPorts.Add(link.Get(0));
@@ -124,10 +152,10 @@ main (int argc, char *argv[])
 
 	/*---------------Connessione tra vSwitchOvest e vSwitchEst--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchSud and vSwitchEst with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchOvest and vSwitchEst with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchOvest,vSwitchEst));
 	vSwitchOvestPorts.Add(link.Get(0));
@@ -135,10 +163,10 @@ main (int argc, char *argv[])
 
 	/*---------------Connessione tra vSwitchOvest e vSwitchSud--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchOvest and vSwitchSud with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchOvest and vSwitchSud with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchOvest,vSwitchSud));
 	vSwitchOvestPorts.Add(link.Get(0));
@@ -146,10 +174,10 @@ main (int argc, char *argv[])
 
 	/*---------------Connessione tra vSwitchSud e vSwitchNord--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchSud and vSwitchNord with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchSud and vSwitchNord with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchSud,vSwitchNord));
 	vSwitchSudPorts.Add(link.Get(0));
@@ -157,10 +185,10 @@ main (int argc, char *argv[])
 
 	/*---------------Connessione tra vSwitchNord e vSwitchEst--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchNord and vSwitchEst with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchNord and vSwitchEst with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchNord,vSwitchEst));
 	vSwitchNordPorts.Add(link.Get(0));
@@ -168,41 +196,61 @@ main (int argc, char *argv[])
 
 	/*---------------Connessione tra vSwitchSud e vSwitchEst--------------------*/
 
-	// Use the CsmaHelper to connect vSwitchSud and vSwitchEst with 1000Mbps band
+	// Use the CsmaHelper to connect vSwitchSud and vSwitchEst with 200Mbps band
 
-	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate (rhombusLink)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	link = csmaHelper.Install(NodeContainer (vSwitchSud,vSwitchEst));
 	vSwitchSudPorts.Add(link.Get(0));
 	vSwitchEstPorts.Add(link.Get(1));
 
+	/*---------------Connessione tra L2SwitchOvest e lo vSwitchOvest--------------------*/
+
+	// Use the CsmaHelper to connect Host and vSwitchOvest with 1000Mbps band
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
+
+	link = csmaHelper.Install (NodeContainer (L2SwitchOvest, vSwitchOvest));
+	L2SwitchOvestPorts.Add (link.Get (0));
+	vSwitchOvestPorts.Add (link.Get (1));
+
 	/*---------------Connessione tra tutti gli Host e lo vSwitchOvest--------------------*/
 
 	// Use the CsmaHelper to connect Host and vSwitchOvest with 1000Mbps band
 	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	NetDeviceContainer hostDevicePorts; //è presente come secondo lo vSwitchOvestPorts
-	for (size_t i = 0; i < nClient; i++)
+	for (size_t i = 0; i < nHost; i++)
 	{
-		link = csmaHelper.Install (NodeContainer (hosts.Get (i), vSwitchOvest));
+		link = csmaHelper.Install (NodeContainer (hosts.Get (i), L2SwitchOvest));
 		hostDevicePorts.Add (link.Get (0));
-		vSwitchOvestPorts.Add (link.Get (1));
+		L2SwitchOvestPorts.Add (link.Get (1));
 	}
 
-	/*---------------Connessione tra vSwitchEst e Server--------------------*/
+	/*---------------Connessione tra vSwitchEst e lo L2SwitchEst--------------------*/
 
 	// Use the CsmaHelper to connect Host and vSwitchOvest with 1000Mbps band
 	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
-	csmaHelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (0.5)));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
+
+	link = csmaHelper.Install (NodeContainer (vSwitchEst, L2SwitchEst));
+	vSwitchEstPorts.Add (link.Get (0));
+	L2SwitchEstPorts.Add (link.Get (1));
+
+	/*---------------Connessione tra L2SwitchEst e Server--------------------*/
+
+	// Use the CsmaHelper to connect Host and vSwitchOvest with 1000Mbps band
+	csmaHelper.SetChannelAttribute ("DataRate", DataRateValue (DataRate ("1000Mbps")));
+	csmaHelper.SetChannelAttribute ("Delay", TimeValue (NanoSeconds(0)));
 
 	NetDeviceContainer serverDevicePorts;//è presente come primo il serverSwitchPorts
 
 	for (size_t i = 0; i < nServer; i++)
 	{
-		link = csmaHelper.Install (NodeContainer (vSwitchEst, servers.Get (i)));
-		vSwitchEstPorts.Add(link.Get(0));
+		link = csmaHelper.Install (NodeContainer (L2SwitchEst, servers.Get (i)));
+		L2SwitchEstPorts.Add(link.Get(0));
 		serverDevicePorts.Add(link.Get(1));;
 	}
 
@@ -215,9 +263,7 @@ main (int argc, char *argv[])
 	Ptr<OFSwitch13InternalHelper> ofQosHelper = CreateObject<OFSwitch13InternalHelper> ();
 	//Imposto che il nostro controller è un QoSController
 	ofQosHelper->InstallController (controller.Get(0),qosCtrl);
-	//NON installo gli switch su ofQosHelper perché devono essere collegati al QosController per usare OpenFlow
-	//ofQosHelper->InstallSwitch (vSwitchOvest, vSwitchOvestPorts);
-	//ofQosHelper->InstallSwitch (vSwitchEst, vSwitchEstPorts);
+
 
 	//Installiamo come device OpenFLow, i due switch che abbiamo creat
 	OFSwitch13DeviceContainer ofSwitchDevices;
@@ -227,6 +273,11 @@ main (int argc, char *argv[])
 	ofSwitchDevices.Add (ofQosHelper->InstallSwitch (vSwitchNord, vSwitchNordPorts));
 
 	ofQosHelper->CreateOpenFlowChannels ();
+
+	//Install bridging code on two switches
+	BridgeHelper bridge;
+	bridge.Install (L2SwitchEst, L2SwitchEstPorts);
+	bridge.Install (L2SwitchOvest, L2SwitchOvestPorts);
 
 	// Install the TCP/IP stack into host and server nodes
 	InternetStackHelper internet;
@@ -245,10 +296,14 @@ main (int argc, char *argv[])
 	ipv4helpr.SetBase ("10.1.0.0", "255.255.0.0","0.0.3.1");
 	serverIpIfaces = ipv4helpr.Assign (serverDevicePorts);
 
-	Ipv4Address host0Address ("10.1.2.1");
-	Ipv4Address host1Address ("10.1.2.2");
+	Ipv4Address host1Address ("10.1.2.1");
+	Ipv4Address host2Address ("10.1.2.2");
+	Ipv4Address host3Address ("10.1.2.3");
 	Ipv4Address server1Address ("10.1.3.1");
 	Ipv4Address server2Address ("10.1.3.2");
+	Ipv4Address server3Address ("10.1.3.3");
+
+	Ipv4Address explorerIpTriggher ("10.1.1.254");
 
 	std::string prot_code = "ns3::UdpSocketFactory";
 	uint32_t packetSize = 512;
@@ -259,38 +314,89 @@ main (int argc, char *argv[])
 	//************ traffic generation ***********
 	/*************Install SendApp and SinkApps****************/
 	//Regola di invio 11 (Genera traffico verso il server1)
-	InetSocketAddress noiseDest11 (server1Address, 5111);
+	InetSocketAddress noiseDest11 (host1Address, 5111);
 	OnOffHelper onoff11 (prot_code, Address (noiseDest11));
 	//Impone un ON del 100% e quindi un OFF dello 0%
-	onoff11.SetConstantRate (DataRate (dataNoise1),packetSize);
+	onoff11.SetConstantRate (DataRate (dataNoise_eMBB),packetSize);//eMBB
 
 	//Regola di invio 12 (Genera traffico verso server2)
-	InetSocketAddress noiseDest12 (server2Address, 5111);
+	InetSocketAddress noiseDest12 (host2Address, 5111);
 	OnOffHelper onoff12 (prot_code, Address (noiseDest12));
 	//Impone un ON del 100% e quindi un OFF dello 0%
-	onoff12.SetConstantRate (DataRate (dataNoise2), packetSize);
+	onoff12.SetConstantRate (DataRate (dataNoise_mMTC), packetSize);//mMTC
 
+	//Regola di invio 13 (Genera traffico verso server3)
+	InetSocketAddress noiseDest13 (host3Address, 5111);
+	OnOffHelper onoff13 (prot_code, Address (noiseDest13));
+	//Impone un ON del 100% e quindi un OFF dello 0%
+	onoff13.SetConstantRate (DataRate (dataNoise_extra), packetSize);//mMTC
 
 	ApplicationContainer SendApps; //Qui vanno aggiungiunte le installazioni per ogni host che invia dati
-	SendApps.Add(onoff12.Install (hosts.Get (0))); //host_0 invia con regola di onoff12
-	//SendApps.Add(onoff11.Install (hosts.Get (1))); //host_1 invia con regola di onoff11
-	SendApps.Start (Seconds (5.0));
-	SendApps.Stop (Seconds (timeOfSendReceive+5));
+	//SendApps.Add(onoff11.Install (servers.Get (0))); //server1 invia con regola di onoff11
+	//SendApps.Add(onoff12.Install (servers.Get (1))); //server2 invia con regola di onoff12
+	SendApps.Add(onoff13.Install (servers.Get (2)));
+	SendApps.Start (Seconds (10.0));
+	SendApps.Stop (Seconds (simTime+10));
 
-	ApplicationContainer SkinApps; //Qui vanno aggiunte le installazioni per ogni server che riceve
-	PacketSinkHelper sink11 (prot_code, InetSocketAddress (Ipv4Address::GetAny (), 5111));
-	SkinApps.Add(sink11.Install (servers.Get (0)));  //server1 riceve in base alla regola sink11
-	SkinApps.Add(sink11.Install (servers.Get (1)));	//server2 riceve in base alla regola sink11
+	ApplicationContainer SkinApps;
+	//PacketSinkHelper vuole (protocollo, InetSocketAddress(ipDestinazione, portaMittente))
+	InetSocketAddress toHost1 (host1Address,5111);
+	InetSocketAddress toHost2 (host2Address,5111);
+	InetSocketAddress toHost3 (host3Address,5111);
+	PacketSinkHelper sink11 (prot_code, toHost1);//InetSocketAddress (Ipv4Address::GetAny (), 5111)
+	PacketSinkHelper sink12 (prot_code, toHost2);//InetSocketAddress (Ipv4Address::GetAny (), 5111)
+	PacketSinkHelper sink13 (prot_code, toHost3);
+	SkinApps.Add(sink11.Install (hosts.Get(0)));  //host1 riceve in base alla regola sink11
+	SkinApps.Add(sink12.Install (hosts.Get (1)));	//host2 riceve in base alla regola sink12
+	SkinApps.Add(sink13.Install (hosts.Get (2)));
 	SkinApps.Start (Seconds (0.1));
-	SkinApps.Stop (Seconds (simTime));
+	SkinApps.Stop (Seconds ((simTime+5)*3));
 
+	InetSocketAddress noiseDest20 (explorerIpTriggher, 5000);
+	OnOffHelper onoff20 (prot_code, Address (noiseDest20));
+	//Impone un ON del 100% e quindi un OFF dello 0%
+	onoff20.SetConstantRate (DataRate (dataExplore), packetSize);
+
+	InetSocketAddress noiseDest21 (host2Address, 5000);
+	OnOffHelper onoff21 (prot_code, Address (noiseDest21));
+	//Impone un ON del 100% e quindi un OFF dello 0%
+	onoff21.SetConstantRate (DataRate (dataExplore), packetSize);
+
+	InetSocketAddress noiseDest22 (host3Address, 5000);
+	OnOffHelper onoff22 (prot_code, Address (noiseDest22));
+	//Impone un ON del 100% e quindi un OFF dello 0%
+	onoff22.SetConstantRate (DataRate (dataExplore), packetSize);
+
+	//Utilizzato per avere le ARP Table aggiornate
+	ApplicationContainer SendAppsExplorer; //Qui vanno aggiungiunte le installazioni per ogni host che invia dati
+	//trigger di esplorazione, NON CANCELLARE
+	SendAppsExplorer.Add(onoff20.Install (servers.Get (0))); //server1 invia con regola di onoff20
+	//SendAppsExplorer.Add(onoff21.Install (servers.Get (1))); //server2 invia con regola di onoff20
+	//SendAppsExplorer.Add(onoff22.Install (servers.Get (2)));
+	SendAppsExplorer.Start (Seconds (5.0));
+	SendAppsExplorer.Stop (Seconds (10.0));
+
+	ApplicationContainer SkinAppsExplorer;
+	//PacketSinkHelper vuole (protocollo, InetSocketAddress(ipDestinazione, portaMittente))
+	InetSocketAddress toHost1Explorer (host1Address,5000);
+	InetSocketAddress toHost2Explorer (host2Address,5000);
+	InetSocketAddress toHost3Explorer (host3Address,5000);
+	PacketSinkHelper sink20 (prot_code, toHost1Explorer);//InetSocketAddress (Ipv4Address::GetAny (), 5111)
+	PacketSinkHelper sink21 (prot_code, toHost2Explorer);//InetSocketAddress (Ipv4Address::GetAny (), 5111)
+	PacketSinkHelper sink22 (prot_code, toHost3Explorer);
+	SkinAppsExplorer.Add(sink20.Install (hosts.Get (0)));  //host1 riceve in base alla regola sink11
+	SkinAppsExplorer.Add(sink21.Install (hosts.Get (1)));	//host2 riceve in base alla regola sink12
+	SkinAppsExplorer.Add(sink22.Install (hosts.Get (2)));
+	SkinAppsExplorer.Start (Seconds (0.1));
+	SkinAppsExplorer.Stop (Seconds (simTime+5)*2);
 
 	// Enable datapath stats and pcap traces at hosts, switch(es), and controller(s)
 	if (trace)
 	{
 		ofQosHelper->EnableOpenFlowPcap ("openflow");
 		ofQosHelper->EnableDatapathStats ("switch-stats");
-		csmaHelper.EnablePcap ("switch", switchContainer, true);
+		csmaHelper.EnablePcap ("vSwitch", vSwitchContainer, true);
+		csmaHelper.EnablePcap ("L2switch", L2SwitchContainer, true);
 		csmaHelper.EnablePcap ("hosts", hosts, true);
 		csmaHelper.EnablePcap ("servers", servers, true);
 		//csmaHelper.EnablePcap("controller", controller, true);
@@ -302,23 +408,50 @@ main (int argc, char *argv[])
 	Ptr<OutputStreamWrapper> stream = ascii.CreateFileStream ("internet.tr");
 	internet.EnableAsciiIpv4All (stream);
 
+	//FlowMonitoring
+	//Ptr<FlowMonitor> flowmon;
+	FlowMonitorHelper flowHelper;
+	//flowmon = flowHelper.Install(hosts);
+	//flowmon = flowHelper.Install(servers);
+	//flowmon = flowHelper.Install(L2SwitchContainer);
+	//flowmon = flowHelper.Install(vSwitchContainer);
+	//flowmon = flowHelper.Install(L2SwitchContainer);
+	//flowmon = flowHelper.Install(hosts);
+
+	//flowmon = flowHelper.InstallAll();
+	flowHelper.Install(hosts);
+	flowHelper.Install(servers);
+	//flowHelper.InstallAll();
+
 	// Run the simulation
-	Simulator::Stop (Seconds (simTime));
+	Simulator::Stop (Seconds ((simTime+5)*4));
 	Simulator::Run ();
+
+	//flowmon->SerializeToXmlFile (flowmonOut + ".flowmon", false, false);
+	flowHelper.SerializeToXmlFile(flowmonOut + ".flowmon", false, false);
+
 	Simulator::Destroy ();
 
-	// Dump total of received bytes by sink applications
+	std::cout<<"\n\n\n"<<std::endl;
 
+	//Host1
 	Ptr<PacketSink> sink1 = DynamicCast<PacketSink> (SkinApps.Get (0));
-	std::cout << "DataNoise1="<<dataNoise1 <<" Bytes received by server 1: " << sink1->GetTotalRx () << " ("
-			<< (8. * sink1->GetTotalRx ()) / 1000000.0 / (timeOfSendReceive-totTimeOfArpGestion) << " Mbps)"
+	std::cout << "DataNoise1="<<dataNoise_eMBB <<" Bytes received by server 1: " << sink1->GetTotalRx ()<< "\nPacket Rx (Payload= "<<packetSize<<")= "<< sink1->GetTotalRx ()/packetSize << " \n("
+			<< (8. * sink1->GetTotalRx ()) / 1000000.0 / (simTime) << " Mbps)"
 			<< std::endl;
 
-
+	//Host2
 	Ptr<PacketSink> sink2 = DynamicCast<PacketSink> (SkinApps.Get (1));
-	std::cout << "DataNoise2="<<dataNoise2 <<" Bytes received by server 2: " << sink2->GetTotalRx () << " ("
-			<< (8. * sink2->GetTotalRx ()) / 1000000.0 / (timeOfSendReceive-totTimeOfArpGestion) << " Mbps)"
+	std::cout << "DataNoise2="<<dataNoise_mMTC <<" Bytes received by server 2: " << sink2->GetTotalRx ()<< "\nPacket Rx (Payload= "<<packetSize<<")= "<< sink2->GetTotalRx ()/packetSize << " \n("
+			<< (8. * sink2->GetTotalRx ()) / 1000000.0 / (simTime) << " Mbps)"
 			<< std::endl;
+
+	//Host3
+	Ptr<PacketSink> sink3 = DynamicCast<PacketSink> (SkinApps.Get (2));
+	std::cout << "DataNoise3="<<dataNoise_mMTC <<" Bytes received by server 3: " << sink3->GetTotalRx ()<< "\nPacket Rx (Payload= "<<packetSize<<")= "<< sink3->GetTotalRx ()/packetSize << " \n("
+			<< (8. * sink3->GetTotalRx ()) / 1000000.0 / (simTime) << " Mbps)"
+			<< std::endl;
+
 
 }
 
