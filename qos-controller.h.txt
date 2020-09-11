@@ -1,0 +1,358 @@
+/* -*-  Mode: C++; c-file-style: "gnu"; indent-tabs-mode:nil; -*- */
+/*
+ * Copyright (c) 2016 University of Campinas (Unicamp)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation;
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ * Author:  Luciano Chaves <luciano@lrc.ic.unicamp.br>
+ */
+
+#ifndef QOS_CONTROLLER_H
+#define QOS_CONTROLLER_H
+
+#include <ns3/ofswitch13-module.h>
+#include <string>
+#include "graphe.h"
+
+using namespace ns3;
+
+/**
+ * \brief An border OpenFlow 1.3 controller
+ */
+class QosController : public OFSwitch13Controller
+{
+public:
+	QosController ();          //!< Default constructor.
+	virtual ~QosController (); //!< Dummy destructor.
+
+	/** Destructor implementation */
+	virtual void DoDispose ();
+
+	/**
+	 * Register this type.
+	 * \return The object TypeId.
+	 */
+	static TypeId GetTypeId (void);
+
+	/**
+	 * Handle a packet in message sent by the switch to this controller.
+	 * \note Inherited from OFSwitch13Controller.
+	 * \param msg The OpenFlow received message.
+	 * \param swtch The remote switch metadata.
+	 * \param xid The transaction id from the request message.
+	 * \return 0 if everything's ok, otherwise an error number.
+	 */
+	ofl_err HandlePacketIn (
+			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
+	void SetWeight(std::string weight);
+
+
+protected:
+	// Inherited from OFSwitch13Controller
+	void HandshakeSuccessful (Ptr<const RemoteSwitch> swtch);
+
+private:
+	/**
+	 * Configure the border switch.
+	 * \param swtch The switch information.
+	 */
+	void ConfigureBorderSwitch (Ptr<const RemoteSwitch> swtch);
+
+	/**
+	 * Configure the aggregation switch.
+	 * \param swtch The switch information.
+	 */
+	void ConfigureAggregationSwitch (Ptr<const RemoteSwitch> swtch);
+
+	//adding methods introduced for the FUB scenario
+	void ConfigureBorderSwitch_FUB (Ptr<const RemoteSwitch> swtch);
+	void ConfigureAggregationSwitch_FUB (Ptr<const RemoteSwitch> swtch);
+
+
+	/**
+	 * Gestisce tutti i pacchetto di tipo UDP
+	 */
+
+	ofl_err HandleUDPPacketIn(
+			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+	/**
+	 * Handle ARP request messages.
+	 * \param msg The packet-in message.
+	 * \param swtch The switch information.
+	 * \param xid Transaction id.
+	 * \return 0 if everything's ok, otherwise an error number.
+	 */
+	ofl_err HandleArpPacketIn (
+			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
+	/**
+	 * Handle TCP connection request
+	 * \param msg The packet-in message.
+	 * \param swtch The switch information.
+	 * \param xid Transaction id.
+	 * \return 0 if everything's ok, otherwise an error number.
+	 */
+	ofl_err HandleConnectionRequest (
+			struct ofl_msg_packet_in *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
+	ofl_err HandleBarrierReply (
+			struct ofl_msg_header *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
+	/*
+	 * Gestisce tutti i pacchetti port status, ed aggiorna il grafo
+	 */
+
+	ofl_err HandlePortStatus (
+			struct ofl_msg_port_status *msg, Ptr<const RemoteSwitch> swtch,
+			uint32_t xid);
+
+	/**
+	 * Extract an IPv4 address from packet match.
+	 * \param oxm_of The OXM_OF_* IPv4 field.
+	 * \param match The ofl_match structure pointer.
+	 * \return The IPv4 address.
+	 */
+	Ipv4Address ExtractIpv4Address (uint32_t oxm_of, struct ofl_match* match);
+	/**
+	 *Extract an Max address form packet match.
+	 *\param oxm_of the OXM_OF_* MAC field.
+	 *\param match The ofl_match structure pointer.
+	 *\return The MAC address.
+	 */
+	Mac48Address ExtractMacAddress (uint32_t oxm_of, struct ofl_match* match);
+	/**
+	 * Estrae il tipo di pacchetto ethernet
+	 */
+	uint16_t ExtractEthernetType (struct ofl_match* match);
+	/**
+	 * Estrae il codice di operazione ARP del pacchetto passato
+	 */
+	uint16_t ExtractArpOperationCode(struct ofl_match* match);
+	/**
+	 * Estrae dal pacchetto la porta di ingresso dello switch da cui il pacchetto è stato ricevuto
+	 */
+	uint32_t ExtractInPort(struct ofl_match* match);
+	/**
+	 * Estrae l'id del protocollo usato dal pacchetto
+	 */
+	uint8_t ExtractIpProtocolID(struct ofl_match* match);
+	/**
+	 * Estrae, dal pacchetto passato, la porta UDP indicata tramite oxm_of
+	 */
+	uint16_t ExtractUdpPort( uint32_t oxm_of , struct ofl_match* match);
+	/**
+	 * Create an ARP request packet, encapsulated inside of an Ethernet frame.
+	 * \param srcMac Source MAC address.
+	 * \param srcIp Source IP address.
+	 * \param dstIp Destination IP address.
+	 * \return The ns3 Ptr<Packet> with the ARP request.
+	 */
+	Ptr<Packet> CreateArpRequest (Mac48Address srcMac, Ipv4Address srcIp,
+			Ipv4Address dstIp);
+	/**
+	 * Create an ARP reply packet, encapsulated inside of an Ethernet frame.
+	 * \param srcMac Source MAC address.
+	 * \param srcIp Source IP address.
+	 * \param dstMac Destination MAC address.
+	 * \param dstIp Destination IP address.
+	 * \return The ns3 Ptr<Packet> with the ARP reply.
+	 */
+	Ptr<Packet> CreateArpReply (Mac48Address srcMac, Ipv4Address srcIp,
+			Mac48Address dstMac, Ipv4Address dstIp);
+
+	/**
+	 * Permette di generare un azione di tipo output in minor spazio
+	 */
+	void shortActionOuputCreator(struct ofl_action_output * action, uint32_t outputSwitchPort, uint16_t lunghezzaMassimaDellaRisposta);
+
+	/*
+	 *Crea un pacchetto OFPT_PORT_MOD che imposta una determinata porta come NO-FORWARD
+	 *\param swtch Lo switch di cui si vuole modificare l'impostazione di una porta
+	 *\param port La porta dello switch da modificare
+	 */
+	void portSwitchConfiguration(Ptr<const RemoteSwitch> swtch, uint32_t port);
+	/*
+	 *Crea un pacchetto OFPT_PORT_MOD che imposta una determinata porta come NO-FORWARD
+	 *\param switchDpId Il datapath id dello switch di cui si vuole modificare l'impostazione di una porta
+	 *\param port La porta dello switch da modificare
+	 */
+	void portSwitchConfiguration(uint64_t switchDpId, uint32_t port);
+
+	/*
+	 * Invia un pacchetto di esplorazione verso un determinato switch
+	 */
+	int switchNetworkExplore(Ptr<const RemoteSwitch> swtch, uint32_t outputSwitchPort);
+	/*
+	 *Crea ed invia un pacchetto di esplorazione di rete allo switch indicato
+	 *\param swtch Lo switch a cui si vuole inviare il pacchetto di esplorazione di rete
+	 *\return 1 se tutto è andato bene
+	 */
+	int switchNetworkExplore(Ptr<const RemoteSwitch> swtch);
+	/*
+	 *Crea un pacchetto UDP senza payload, con portDst=networkExplorerUdpPort e portSrc = portDst+fromSwitchId
+	 *\param fromSwitchId Il datapath id dello switch a cui si vuole inviare il pacchetto
+	 *\return Il riferimento al pacchetto creato descritto sopra
+	 */
+	Ptr<Packet> CreateUdpExplorerPacket(uint64_t fromSwitchId);
+	/*
+	 *Lancia una pacchetti di esplorazione di rete a tutti gli switch, che verranno poi captati da altre funzioni
+	 */
+	void NetworkExplorerFunction();
+	/*
+	 *Usando la PortFrowardTable, che indica, se esiste, la porta di passaggio da uno switch verso un altro
+	 *Genera il grafo della rete degli switch, in base al numero degli switch contati nella rete
+	 *\param nSwitch Il numero degli switch che hanno fatto handshake
+	 *\return Il riferimento alla matrice nSwitchxnSwitch che rappresenta il grafo associato alla rete
+	 */
+	int ** GrafeGeneration(const int nSwitch);
+	/*
+	 * Invia una serie di pacchetti di ARP Request per ottenere i MAC di determinati dispositivi all'interno della rete
+	 */
+	void searchMacOfRouters();
+	/*
+	 * Genera delle regole di shortestPath tra tutti i router appartenenti a reti diverse
+	 */
+	void makePathByTwoRouter();
+	/*
+	 * Estre da file indirizi.txt le informazioni riguardanti i router presenti nella rete
+	 */
+	bool GetRouterConfiguration();
+	/*
+	 *Lancia una serie di Flow-Mod sugli switch identificati dal cammino passato come parametro
+	 *Permette quindi ad un flusso con le determinate caratteristiche passate come parametro di arrivare
+	 *da sorgente a destinazione
+	 *\param path La lista dei nodi che fanno parte del cammino in ordine di successione
+	 *\param
+	 */
+	int addFlowModToPathSwitch(std::list<uint64_t> path, Ipv4Address ipSrc, int ipSrcMask, Ipv4Address ipDst, int ipDstMask);
+	/*
+	 * Scrive sugli switch regole di gruppo elementari, group table
+	 */
+	int addFlowModToPathSwitch(std::list<uint64_t> path, Ipv4Address ipSrc, Ipv4Address ipDst, int weight);
+	/*
+	 *	Effettua la gestione dei flussi sulla base dei diversi tipi di servizi descritti in "m_IpServiceTable"
+	 */
+	int ServiceManagerIPbased(Graphe g, Ipv4Address ipSrc, Ipv4Address ipDst);
+	/**
+	 * Save the pair IP / MAC address in ARP table.
+	 * \param ipAddr The IPv4 address.
+	 * \param macAddr The MAC address.
+	 */
+	void SaveArpEntry (Ipv4Address ipAddr, Mac48Address macAddr);
+	/**
+	 * Perform an ARP resolution
+	 * \param ip The Ipv4Address to search.
+	 * \return The MAC address for this ip.
+	 */
+	Mac48Address GetArpEntry (Ipv4Address ip);
+	/**
+	 * Salva la coppia DpId / Switch Pountr nella DpId Table
+	 * \param dpIdSwitch Il datapath id dello switch
+	 * \param swtch Il riferimento allo switch
+	 */
+	int SaveSwitchEntry(uint64_t dpIdSwitch, Ptr<const RemoteSwitch> swtch);
+
+	/**
+	 * Controlla se esiste la arp entry riferita ad un ip
+	 * \parm ip L'ip da usare come chiave
+	 * \return true se è stata un trovata una corrispondenza in base alla chiave
+	 */
+	bool ExistArpEntry (Ipv4Address ip);
+	/*
+	 *Salva la coppia Ip / Switch Datapath Id nella
+	 *\param address Indirizzo ip dell'host da memorizzare
+	 *\param swtchDpId Il datapath id dello switch che ha direttamente connesso l'host
+	 */
+	void SaveIpDestEntry(Ipv4Address address,uint64_t swtchDpId);
+	/*
+	 *Ritorna il datapath id dello switch dove l'host è connesso
+	 *\param address L'ip dell'host
+	 *\return Il datapath id dello switch su cui si trova l'host
+	 */
+	uint64_t GetIpDestEntry(Ipv4Address address);
+	/*
+	 * Salva una nuova entry di servizio
+	 */
+	void SaveServiceEntry(Ipv4Address address, std::list<int> weightList);
+	/*
+	 * Controlla la presenza o meno di una certa classe di servizio per un determinato ip
+	 */
+	bool ExistServiceEntry(Ipv4Address address);
+	/*
+	 * Ottiene la classe di servizio con cui gestire un determinato flusso
+	 */
+	std::list<int> GetServiceEntry(Ipv4Address address);
+
+	Address   m_serverIpAddress;    //!< Virtual server IP address
+	uint16_t  m_serverTcpPort;      //!< Virtual server TCP port
+	Address   m_serverMacAddress;   //!< Border switch MAC address
+	bool      m_meterEnable;        //!< Enable per-flow mettering
+	DataRate  m_meterRate;          //!< Per-flow meter rate
+	bool      m_linkAggregation;    //!< Enable link aggregation
+
+	uint16_t networkExplorerUdpPort = 11000; //!< Virtual udp port use to network exploring
+	int networkExplorerState = 1; //!< To first netorkExplorer activation only
+	Graphe g;
+	uint64_t group_id = 1;
+
+	Ipv4Address ipExplorerTrigger = "10.1.1.254";
+	Ipv4Address hideIpServer = "10.1.1.1";
+	Mac48Address hideMacServer = "00:00:00:00:00:00";
+
+
+	std::string    InputWeight;          //input used to balance the two flows
+
+
+	/** Map saving <IPv4 address / MAC address> */
+	typedef std::map<Ipv4Address, Mac48Address> IpMacMap_t;
+	IpMacMap_t m_arpTable;          //!< ARP resolution table.
+
+	/** Map saving < DatapathId / RemoteSwitch > */
+	typedef std::map< uint64_t , Ptr<const RemoteSwitch> > DpIdRemoteSwitch_t;
+	DpIdRemoteSwitch_t m_dpIdTable;
+
+	typedef std::map<std::pair<uint64_t,uint64_t>,uint32_t> PortForwardFromS1ToS2_t;
+	PortForwardFromS1ToS2_t m_PortFrowardTable;
+
+	typedef std::map<Ipv4Address,uint64_t> IpSwitchMap_t;
+	IpSwitchMap_t m_ipDestTable;
+
+	/** Map saving <IPv4 address / List of Weight> */
+	typedef std::map<Ipv4Address, std::list<int>> IpServiceMap_t;
+	IpServiceMap_t m_IpServiceTable;          //!< Service table.
+
+
+
+
+
+	typedef std::list<routerInfo> routerInfoList;
+	routerInfoList l_routerInfo;
+
+	/*
+	 * Fornisce il path tra due switch della rete, usando dijkstra
+	 */
+	std::list<uint64_t> shortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch);
+
+
+};
+
+#endif /* QOS_CONTROLLER_H */
+
+

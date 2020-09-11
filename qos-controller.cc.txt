@@ -135,8 +135,6 @@ QosController::HandshakeSuccessful (Ptr<const RemoteSwitch> swtch)
 		uint64_t id = swtch->GetDpId();
 		g.addNode(id);
 
-		nSwitch++;
-
 		networkExplorerState=1;
 		SendBarrierRequest (swtch);
 		switchNetworkExplore(swtch);
@@ -426,6 +424,7 @@ QosController::HandleArpPacketIn (
 
 			}
 		}else{
+			/*Inizio procedura di ARP Handler*/
 			std::cout << "Al lavoro!" << std::endl;
 
 			Ipv4Address serverIp = Ipv4Address::ConvertFrom (m_serverIpAddress);
@@ -433,7 +432,11 @@ QosController::HandleArpPacketIn (
 
 			uint8_t replyData[64];
 
-			if(ExistArpEntry(dstIp)){// In caso di ArpEntry presente, mi è stato chiesto il MAC di un host che conosco
+
+			if(ExistArpEntry(dstIp)){
+				// In caso di ArpEntry esistente
+				//mi è stato chiesto il MAC di un host che conosco
+				//il Controlle genera una reply fingendosi il destinatario della request
 
 				Mac48Address dstMac = GetArpEntry(dstIp);
 				Ptr<Packet> pkt = CreateArpReply(dstMac,dstIp,srcMac,srcIp);
@@ -456,7 +459,10 @@ QosController::HandleArpPacketIn (
 				SendToSwitch (swtch, (struct ofl_msg_header*)&reply, GetNextXid());
 				free (action);
 				ServiceManagerIPbased(g,srcIp,dstIp);
-			}else{//In caso di ArpEntry non trovata, ossia, mi è stato chiesto il MAC di un host che non conosco
+			}else{
+				//In caso di ArpEntry non esistente
+				//mi è stato chiesto il MAC di un host che non conosco
+				//Il Controller prende in carico la richiesta, e cerca lui le informazioni che gli mancano
 				std::cout << "ArpEntry NON trovata, vado in ricerca" <<std::endl;
 
 				Ptr<Packet> pkt = CreateArpRequest(serverMac, serverIp, dstIp);
@@ -482,6 +488,7 @@ QosController::HandleArpPacketIn (
 					SendToSwitch(GetRemoteSwitch(*itr), (struct ofl_msg_header*)&reply, xid);
 				}
 			}
+			/*Fine procedura di ARP Handler*/
 		}
 	}else{
 		std::cout<<"Ho ricevuto una reply"<<std::endl;
@@ -777,7 +784,8 @@ QosController::makePathByTwoRouter(){
 				std::cout<<"Destinatario: "<<(*ita).esterno<<std::endl;
 				uint64_t srcSwitch = GetIpDestEntry((*it).esterno);
 				uint64_t dstSwitch = GetIpDestEntry((*ita).esterno);
-				std::list<uint64_t> path = shortestPath(g,srcSwitch,dstSwitch);
+				dijkstraResult dr;
+				std::list<uint64_t> path = dr.shortestPath(g,srcSwitch,dstSwitch);
 				addFlowModToPathSwitch(path,((*it).esterno),((*ita).esterno),1);
 		}
 	}
@@ -1021,7 +1029,8 @@ QosController::ExistArpEntry (Ipv4Address ip)
 	return false;
 }
 
-void QosController::SaveIpDestEntry(Ipv4Address address, uint64_t swtchDpId){
+void
+QosController::SaveIpDestEntry(Ipv4Address address, uint64_t swtchDpId){
 	std::pair<Ipv4Address,uint64_t> entry (address,swtchDpId);
 	std::pair<IpSwitchMap_t::iterator,bool> ret;
 	ret = m_ipDestTable.insert (entry);
@@ -1136,9 +1145,6 @@ QosController::addFlowModToPathSwitch(std::list<uint64_t> path, Ipv4Address ipSr
 	return 1;
 }
 
-
-
-
 int
 QosController::addFlowModToPathSwitch(std::list<uint64_t> path, Ipv4Address ipSrc, Ipv4Address ipDst, int weight){
 	std::list<uint64_t>::iterator itFrom, itTo;
@@ -1193,7 +1199,6 @@ QosController::ServiceManagerIPbased(Graphe g, Ipv4Address ipSrc, Ipv4Address ip
 		std::cout<<"Prima Yen"<<std::endl;
 		YensSupport ys;
 		listOfShortestPath = ys.kShortestPath(g,vSwitchSrc,vSwitchDst,weightPath.size());
-		//listOfShortestPath = YenKShortestPath(graph,nNode,vSwitchSrc,vSwitchDst,weightPath.size());
 		std::cout<<"Dopo Yen"<<std::endl;
 
 		std::cout<<"Lunghezza lista yen: "<<listOfShortestPath.size()<<std::endl;
@@ -1260,53 +1265,3 @@ QosController::ServiceManagerIPbased(Graphe g, Ipv4Address ipSrc, Ipv4Address ip
 	group_id++;
 	return 1;
 }
-
-std::list<uint64_t>
-QosController::shortestPath(Graphe g ,uint64_t fromSwitch, uint64_t toSwitch){
-	typedef std::list<uint64_t> List;
-	dijkstraResult dijRes;
-	List visit;
-	OrderedListLink orderedLinkList;
-
-	std::cout<<"ActualNode: "<<fromSwitch<<std::endl;
-	uint64_t actualNode = fromSwitch;
-	dijRes.addFirst(actualNode);
-
-	std::list<Link> links = g.getNode(actualNode).getLinksLink();
-
-	orderedLinkList.multiOrderedInsert(links);
-
-	while((visit.size()<=g.getNNodes())&&(actualNode != toSwitch)&&(actualNode!=0)){
-		std::cout<<"actualNode in while: "<<actualNode<<std::endl;
-		visit.push_front(actualNode);
-		//Mi prendo il prossimo nodo,non vistiato, che visiterò dopo
-		//è infatti il primo elemento di una lista ordinata di link
-		uint64_t nextNode = 0;
-		Link l;
-		if(!orderedLinkList.emptyLinkList()){
-			l = orderedLinkList.lowElementCopy();
-			while((orderedLinkList.isIn(l.getByNode().second,visit))&&(!orderedLinkList.emptyLinkList())){
-				orderedLinkList.pop_front();
-				l = orderedLinkList.lowElementCopy();
-			}
-		}
-		if(!orderedLinkList.emptyLinkList())
-			nextNode = l.getByNode().second;
-
-		std::cout<<"nextNode in while: "<< nextNode<<std::endl;
-		//Aggiorno tutta la struttura dati in base all'attuale nodo analizzato
-		while((!orderedLinkList.emptyLinkList())&&(nextNode!=0)){
-			Link actualLink = orderedLinkList.pop_front();
-			uint64_t linkDest = actualLink.getByNode().second;
-			uint64_t linkWeight = actualLink.getCost();
-			dijRes.update(actualNode,linkDest,linkWeight);
-		}
-		//preparo per analizzare il prossimo nodo
-		actualNode = nextNode;
-		orderedLinkList.multiOrderedInsert(g.getNode(actualNode).getLinksLink());
-	}
-	return dijRes.pathBy(fromSwitch,toSwitch);
-}
-
-
-
